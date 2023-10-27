@@ -50,3 +50,13 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# IDE folders
+.vs/
+.vscode/
+
+# output directory
+out/
+
+# CMake
+CMakeSettings.json
