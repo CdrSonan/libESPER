@@ -10,26 +10,26 @@
 # Linker output
 *.ilk
 *.map
-*.exp
+#*.exp
 
 # Precompiled Headers
 *.gch
 *.pch
 
 # Libraries
-*.lib
+#*.lib
 *.a
 *.la
 *.lo
 
 # Shared objects (inc. Windows DLLs)
-*.dll
+#*.dll
 *.so
 *.so.*
 *.dylib
 
 # Executables
-*.exe
+#*.exe
 *.out
 *.app
 *.i*86
@@ -57,6 +57,7 @@ dkms.conf
 
 # output directory
 out/
+build/
 
 # CMake
 CMakeSettings.json
