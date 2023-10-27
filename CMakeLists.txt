@@ -24,4 +24,4 @@ add_library(resampler SHARED
 target_include_directories(resampler PRIVATE "${PROJECT_SOURCE_DIR}/")
 set_property(TARGET resampler PROPERTY C_STANDARD 11)
 
-#set_target_properties(esper resampler PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/build")
+set_target_properties(esper resampler PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/build")
