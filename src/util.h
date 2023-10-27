@@ -3,14 +3,13 @@
 #include "fftw/fftw3.h"
 
 //struct holding parameters related to data batching and spectral filtering shared across the entire engine.
-//essentially a wrapper around relevant elements of global_consts.py
 typedef struct
 {
     unsigned int sampleRate;
     unsigned short tickRate;
     unsigned int batchSize;
     unsigned int tripleBatchSize;
-    unsigned int halfTripleBatchSize; //exactly tripleBatchSize/2 without additional space for DC offset, since this is also used outside of rfft
+    unsigned int halfTripleBatchSize; //expected to be exactly tripleBatchSize/2 without additional space for DC offset, since this is also used outside of rfft
     unsigned short filterBSMult;
     float DIOBias;
     float DIOBias2;
@@ -19,8 +18,8 @@ typedef struct
     unsigned short filterTEEMult;
     unsigned short filterHRSSMult;
     unsigned int nHarmonics;
-    unsigned int halfHarmonics; //actually nHarmonics/2 + 1 to account for DC offset after rfft
-    unsigned int frameSize; //nHarmonics + 2 for harmonic amplitudes and phases + halfTripleBatchSize + 1 for spectrum
+    unsigned int halfHarmonics; //expected to be nHarmonics/2 + 1 (to account for DC offset after rfft)
+    unsigned int frameSize; //expected to be nHarmonics + halfTripleBatchSize + 3 for joint harmonics + spectrum representation
     unsigned int ampContThreshold;
     unsigned int spectralRolloff1;
     unsigned int spectralRolloff2;
@@ -47,7 +46,7 @@ typedef struct
 }
 cSampleCfg;
 
-//struct holding an audio sample, and its settings
+//struct holding an audio sample and its settings
 typedef struct
 {
     float* waveform;

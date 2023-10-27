@@ -64,14 +64,14 @@ void irfft_inpl(fftwf_complex* input, int length, float* output)
 
 //short-time fft of real-valued data with Hanning windowing.
 //The required batch size parameters are wrapped into the config argument.
-//The i-th window of the transform is centered at i * config.batchSize, and reflection padding is applied to the signal as needed to accomplish this.
+//The i-th window of the transform is centered at (i + 1/2) * config.batchSize, and reflection padding is applied to the signal as needed to accomplish this.
 fftwf_complex* stft(float* input, int length, engineCfg config)
 {
     int batches = ceildiv(length, config.batchSize);
     int rightpad = batches * config.batchSize - length + config.batchSize;
     // extended input buffer aligned with batch size
     float* in = (float*) malloc((config.batchSize + length + rightpad) * sizeof(float));
-    // fill input buffer, extend will data with reflection padding on both sides
+    // fill input buffer, extend data with reflection padding on both sides
     for (int i = 0; i < config.batchSize; i++)
     {
         *(in + i) = *(input + config.batchSize - i);
@@ -121,7 +121,7 @@ void stft_inpl(float* input, int length, engineCfg config, float* output)
 }
 
 //inverse short-time fft for real-valued data. Assumes the input was created using Hanning windows, and is padded for centered windows.
-//The required batch size parameters are wrapped into the config argument, while the normalization factor is hard coded into the function, rather than inferred.
+//The required batch size parameters are wrapped into the config argument, while the normalization factor is hard coded into the function rather than inferred.
 float* istft(fftwf_complex* input, int batches, int targetLength, engineCfg config)
 {
     // fft setup
@@ -150,7 +150,7 @@ float* istft(fftwf_complex* input, int batches, int targetLength, engineCfg conf
     float* output = (float*) malloc(targetLength * sizeof(float));
     for (int i = 0; i < targetLength; i++)
     {
-        *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) * 2 / 3;
+        *(output + i) = *(mainBuffer + config.batchSize + i) * 2 / 3;
     }
     free(mainBuffer);
     return output;
@@ -186,7 +186,7 @@ float* istft_hann(fftwf_complex* input, int batches, int targetLength, engineCfg
     float* output = (float*) malloc(targetLength * sizeof(float));
     for (int i = 0; i < targetLength; i++)
     {
-        *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) * 2 / 3;
+        *(output + i) = *(mainBuffer + config.batchSize + i) * 2 / 3;
     }
     free(mainBuffer);
     return output;

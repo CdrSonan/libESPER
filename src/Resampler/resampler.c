@@ -41,7 +41,7 @@ __declspec(dllexport) void __cdecl resampleSpecharm(float* avgSpecharm, float* s
         }
     }
     //fade in sample if required
-    if (0)//startCap == 0)
+    if (startCap == 0)
     {
         printf("fade in\n");
         float factor = -log2f((float)(timings.start2 - timings.start1) / (float)(timings.start3 - timings.start1));
@@ -58,7 +58,7 @@ __declspec(dllexport) void __cdecl resampleSpecharm(float* avgSpecharm, float* s
         }
     }
     //fade out sample if required
-    if (0)//endCap == 0)
+    if (endCap == 0)
     {
         printf("fade out\n");
         float factor = -log2f((float)(timings.end3 - timings.end2) / (float)(timings.end3 - timings.end1));
