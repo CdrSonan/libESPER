@@ -27,6 +27,7 @@ __declspec(dllexport) void __cdecl resampleSpecharm(float* avgSpecharm, float* s
         }
     }
     //scale specharm according to steadiness setting and add it to average
+    #pragma omp parallel for
     for (int i = 0; i < timings.windowEnd; i++)
     {
         for (int j = 0; j < config.halfHarmonics; j++)
@@ -75,11 +76,13 @@ __declspec(dllexport) void __cdecl resampleSpecharm(float* avgSpecharm, float* s
         }
     }
     //fill output buffer
+    #pragma omp parallel for
     for (int i = 0; i < (timings.windowEnd - timings.windowStart) * config.frameSize; i++)
     {
         *(output + i) = *(buffer + timings.windowStart * config.frameSize + i);
     }
     free(buffer);
+    #pragma omp parallel for
     for (int i = 0; i < (timings.windowEnd - timings.windowStart) * config.frameSize; i++)
     {
         if (isnan(*(buffer + i)))
@@ -101,6 +104,7 @@ __declspec(dllexport) void __cdecl resamplePitch(short* pitchDeltas, int length,
     //loop pitch
     loopSamplerPitch(pitchDeltas, length, output, requiredSize, spacing);
     //load data into output buffer
+    #pragma omp parallel for
     for (int i = 0; i < requiredSize; i++)
     {
         *(output + i) -= pitch;

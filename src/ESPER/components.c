@@ -30,6 +30,7 @@ float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
     {
         *(cutoffWindow + i) = 0.;
     }
+    #pragma omp parallel for
     for (int i = 0; i < sample.config.batches * (config.halfTripleBatchSize + 1); i++)
     {
         *(spectra + i) = *(signalsAbs + i);
@@ -78,6 +79,7 @@ float* highRangeSmooth(cSample sample, float* signalsAbs, engineCfg config) {
     unsigned int specSize = config.halfTripleBatchSize + sample.config.specDepth + 1;
     float* workingSpectra = (float*) malloc(sample.config.batches * specSize * sizeof(float));
     float* spectra = (float*) malloc(sample.config.batches * specSize * sizeof(float));
+    #pragma omp parallel for
     for (int i = 0; i < sample.config.batches; i++)
     {
         //copy data into buffers
@@ -99,6 +101,7 @@ float* highRangeSmooth(cSample sample, float* signalsAbs, engineCfg config) {
     int highK;
     for (int i = 0; i < sample.config.specDepth; i++)
     {
+        #pragma omp parallel for
         for (int j = 0; j < sample.config.batches; j++)
         {
             for (int k = 0; k < specSize; k++)
@@ -122,6 +125,7 @@ float* highRangeSmooth(cSample sample, float* signalsAbs, engineCfg config) {
             }
         }
         //load maximum of (smoothed) spectra and (non-smoothed) workingSpectra into both buffers
+        #pragma omp parallel for
         for (int j = 0; j < sample.config.batches * specSize; j++)
         {
             if (*(workingSpectra + j) > *(spectra + j))
@@ -134,6 +138,7 @@ float* highRangeSmooth(cSample sample, float* signalsAbs, engineCfg config) {
     free(workingSpectra);
     //remove padding and load the result into an output buffer
     float* output = (float*) malloc(sample.config.batches * (config.halfTripleBatchSize + 1) * sizeof(float));
+    #pragma omp parallel for
     for (int i = 0; i < sample.config.batches; i++)
     {
         for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
@@ -163,6 +168,7 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
     {
         *(slope + i) = 1.;
     }
+    #pragma omp parallel for
     for (int i = 0; i < sample.config.batches; i++)
     {
         for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
@@ -252,6 +258,7 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
     }
     //load result into the appropriate portion of sample.specharm
     free(workingSpectra);
+    #pragma omp parallel for
     for (int i = 0; i < sample.config.batches; i++)
     {
         for (int j = 0; j < (config.halfTripleBatchSize + 1); j++)
@@ -627,6 +634,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     {
         *(wave + i) = *(sample.waveform + padLength - i - 1);
     }
+    #pragma omp parallel for
     for (int i = 0; i < sample.config.length; i++)
     {
         *(wave + padLength + i) = *(sample.waveform + i);
@@ -641,6 +649,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     //Get DIO Pitch markers
     PitchMarkerStruct markers = calculatePitchMarkers(sample, wave, waveLength, config);
     //Loop over each window
+    #pragma omp parallel for
     for (int i = 0; i < batches; i++)
     {
         //separation calculations are only necessary if the sample is voiced
@@ -818,6 +827,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     //globalHarmFunction represents the voiced signal in time-synchronous space.
     //Subtract it from the waveform now, and store the residuals as unvoiced excitation
     float* altWave = istft_hann(globalHarmFunction, batches, sample.config.length, config);
+    #pragma omp parallel for
     for (int i = 0; i < sample.config.length; i++)
     {
         *(altWave + i) = *(sample.waveform + i) - (*(altWave + i) / config.tripleBatchSize);
@@ -849,6 +859,7 @@ void averageSpectra(cSample sample, engineCfg config) {
     {
         *(sample.avgSpecharm + i) /= sample.config.batches;
     }
+    #pragma omp parallel for
     for (int i = 0; i < sample.config.batches; i++)
     {
         for (int j = 0; j < config.halfHarmonics; j++)

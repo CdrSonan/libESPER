@@ -46,6 +46,7 @@ void loopSamplerSpecharm(float* input, int length, float* output, int targetLeng
             }
         }
         //add mid windows from buffer to output
+        #pragma omp parallel for
         for (int i = 1; i < requiredInstances; i++)
         {
             for (int j = 0; j < (length - effSpacing) * config.frameSize; j++)
@@ -102,6 +103,7 @@ void loopSamplerPitch(short* input, int length, float* output, int targetLength,
             *(buffer + i) += (float)*(input + length - effSpacing + i) * (1. - ((float)(i + 1) / (float)(effSpacing + 1)));
         }
         //add mid windows from buffer to output
+        #pragma omp parallel for
         for (int i = 1; i < requiredInstances; i++)
         {
             for (int j = 0; j < (length - effSpacing); j++)

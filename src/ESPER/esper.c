@@ -14,6 +14,7 @@ __declspec(dllexport) void __cdecl specCalc(cSample sample, engineCfg config)
     sample.config.batches = ceildiv(sample.config.length, config.batchSize);
     fftwf_complex* buffer = stft(sample.waveform, sample.config.length, config);
     float* signalsAbs = (float*) malloc(sample.config.batches * (config.halfTripleBatchSize + 1) * sizeof(float));
+    #pragma omp parallel for
     for (int i = 0; i < sample.config.batches * (config.halfTripleBatchSize + 1); i++) {
         *(signalsAbs + i) = sqrtf(cpxAbsf(*(buffer + i)));
     }

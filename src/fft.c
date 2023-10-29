@@ -76,6 +76,7 @@ fftwf_complex* stft(float* input, int length, engineCfg config)
     {
         *(in + i) = *(input + config.batchSize - i);
     }
+    #pragma omp parallel for
     for (int i = 0; i < length; i++)
     {
         *(in + config.batchSize + i) = *(input + i);
@@ -87,6 +88,7 @@ fftwf_complex* stft(float* input, int length, engineCfg config)
     // allocate output buffer of desired size
     fftwf_complex* out = (fftwf_complex*) malloc(batches * (config.halfTripleBatchSize + 1) * sizeof(fftwf_complex));
     // fft setup
+    #pragma omp parallel for
     for (int i = 0; i < batches; i++)
     {
         // allocation within loop for future openMP support
@@ -112,6 +114,7 @@ void stft_inpl(float* input, int length, engineCfg config, float* output)
 {
     int batches = ceildiv(length, config.batchSize);
     fftwf_complex* buffer = stft(input, length, config);
+    #pragma omp parallel for
     for (int i = 0; i < batches * (config.halfTripleBatchSize + 1); i++)
     {
         *(output + i) = (*(buffer + i))[0];
@@ -148,6 +151,7 @@ float* istft(fftwf_complex* input, int batches, int targetLength, engineCfg conf
     free(buffer);
     // allocate output buffer and transfer relevant data into it
     float* output = (float*) malloc(targetLength * sizeof(float));
+    #pragma omp parallel for
     for (int i = 0; i < targetLength; i++)
     {
         *(output + i) = *(mainBuffer + config.batchSize + i) * 2 / 3;
@@ -163,6 +167,7 @@ float* istft_hann(fftwf_complex* input, int batches, int targetLength, engineCfg
     // fft setup
     // extended input buffer aligned with batch size
     float* mainBuffer = (float*) malloc(config.batchSize * (batches + 2) * sizeof(float));
+    #pragma omp parallel for
     for (int i = 0; i < config.batchSize * (batches + 2); i++)
     {
         *(mainBuffer + i) = 0.;
@@ -184,6 +189,7 @@ float* istft_hann(fftwf_complex* input, int batches, int targetLength, engineCfg
     free(buffer);
     // allocate output buffer and transfer relevant data into it
     float* output = (float*) malloc(targetLength * sizeof(float));
+    #pragma omp parallel for
     for (int i = 0; i < targetLength; i++)
     {
         *(output + i) = *(mainBuffer + config.batchSize + i) * 2 / 3;
