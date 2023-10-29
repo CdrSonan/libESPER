@@ -14,7 +14,7 @@ void loopSamplerSpecharm(float* input, int length, float* output, int targetLeng
     printf("effSpacing: %i, requiredInstances: %i, lastWin: %i\n", effSpacing, requiredInstances, lastWin);
     if (targetLength <= length)
     {
-        //one instance is required to cover the entire length.
+        //one instance is enough to cover the entire length.
         //Just copy the data instead of looping.
         for (int i = 0; i < targetLength * config.frameSize; i++)
         {
@@ -59,14 +59,14 @@ void loopSamplerSpecharm(float* input, int length, float* output, int targetLeng
         {
             for (int i = 0; i < lastWin * config.frameSize; i++)
             {
-                *(output + requiredInstances * (length - effSpacing) + i) = *(buffer + i);
+                *(output + requiredInstances * (length - effSpacing) * config.frameSize + i) = *(buffer + i);
             }
         }
         else
         {
             for (int i = 0; i < lastWin * config.frameSize; i++)
             {
-                *(output + requiredInstances * (length - effSpacing) + i) = *(input + length - effSpacing + i);
+                *(output + requiredInstances * (length - effSpacing) * config.frameSize + i) = *(input + (length - effSpacing) * config.frameSize + i);
             }
         }
         free(buffer);
