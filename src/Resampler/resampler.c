@@ -68,7 +68,7 @@ __declspec(dllexport) void __cdecl resampleSpecharm(float* avgSpecharm, float* s
 }
 
 //C implementation of the ESPER pitch resampler. Respects loop spacing setting and start/end fading flags.
-__declspec(dllexport) void __cdecl resamplePitch(short* pitchDeltas, int length, float pitch, float spacing, int startCap, int endCap, float* output, int requiredSize, segmentTiming timings)
+__declspec(dllexport) void __cdecl resamplePitch(int* pitchDeltas, int length, float pitch, float spacing, int startCap, int endCap, float* output, int requiredSize, segmentTiming timings)
 {
     //loop pitch
     loopSamplerPitch(pitchDeltas, length, output, requiredSize, spacing);

@@ -74,7 +74,7 @@ void loopSamplerSpecharm(float* input, int length, float* output, int targetLeng
 }
 
 //loops pitch data with configurable overlap between instances
-void loopSamplerPitch(short* input, int length, float* output, int targetLength, float spacing)
+void loopSamplerPitch(int* input, int length, float* output, int targetLength, float spacing)
 {
     int effSpacing = ceildiv(spacing * length,  2);
     int requiredInstances = targetLength / (length - effSpacing);
@@ -99,8 +99,8 @@ void loopSamplerPitch(short* input, int length, float* output, int targetLength,
         //modify start of buffer to include transition
         for (int i = 0; i < effSpacing; i++)
         {
-            *(buffer + i) *= (float)(i + 1) / (float)(effSpacing + 1);
-            *(buffer + i) += (float)*(input + length - effSpacing + i) * (1. - ((float)(i + 1) / (float)(effSpacing + 1)));
+            *(buffer + i) *= (float)(i) / (float)(effSpacing - 1);
+            *(buffer + i) += (float)*(input + length - effSpacing + i) * (1. - ((float)(i) / (float)(effSpacing - 1)));
         }
         //add mid windows from buffer to output
         #pragma omp parallel for
