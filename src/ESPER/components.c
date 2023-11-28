@@ -14,7 +14,7 @@
 float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
 {
     //scale cutoff frequency based on window size
-    int specWidth = (int)((float)config.tripleBatchSize / (float)(sample.config.specWidth + 3) / fmax(sample.config.expectedPitch / 440., 1.));
+    int specWidth = (int)((float)config.tripleBatchSize / (float)(sample.config.specWidth + 3) / fmax(sample.config.expectedPitch / 150., 1.));
     float* spectra = (float*) malloc(sample.config.batches * (config.halfTripleBatchSize + 1) * sizeof(float));
     //define fourier-space windowing function for lowpass filter
     float* cutoffWindow = (float*) malloc((config.halfTripleBatchSize / 2 + 1) * sizeof(float));
@@ -24,7 +24,7 @@ float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
     }
     for (int i = specWidth / 2; i < specWidth; i++)
     {
-        *(cutoffWindow + i) = 1. - (float)(i - (specWidth / 2) + 1) / (float)(specWidth / 2 + 1);
+        *(cutoffWindow + i) = 1. - (float)(i - (specWidth / 2)) / (float)(ceildiv(specWidth, 2) - 1);
     }
     for (int i = specWidth; i < config.halfTripleBatchSize / 2 + 1; i++)
     {
@@ -40,8 +40,8 @@ float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
     #pragma omp parallel for
     for (int i = 0; i < sample.config.batches; i++)
     {
-        fftwf_plan plan_fwd = fftwf_plan_dft_r2c_1d(config.halfTripleBatchSize, spectra + i * (config.halfTripleBatchSize + 1), f_spectra + i * (config.halfTripleBatchSize / 2 + 1), FFTW_ESTIMATE);
-        fftwf_plan plan_bwd = fftwf_plan_dft_c2r_1d(config.halfTripleBatchSize, f_spectra + i * (config.halfTripleBatchSize / 2 + 1), spectra + i * (config.halfTripleBatchSize + 1), FFTW_ESTIMATE);
+        fftwf_plan plan_fwd = fftwf_plan_dft_r2c_1d(config.halfTripleBatchSize + 1, spectra + i * (config.halfTripleBatchSize + 1), f_spectra + i * (config.halfTripleBatchSize / 2 + 1), FFTW_ESTIMATE);
+        fftwf_plan plan_bwd = fftwf_plan_dft_c2r_1d(config.halfTripleBatchSize + 1, f_spectra + i * (config.halfTripleBatchSize / 2 + 1), spectra + i * (config.halfTripleBatchSize + 1), FFTW_ESTIMATE);
         for (int j = 0; j < sample.config.specDepth; j++)
         {
             for (int k = 0; k < config.halfTripleBatchSize + 1; k++)
@@ -60,7 +60,7 @@ float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
             fftwf_execute(plan_bwd);
             for (int k = 0; k < config.halfTripleBatchSize + 1; k++)
             {
-                *(spectra + i * (config.halfTripleBatchSize + 1) + k) /= config.halfTripleBatchSize;
+                *(spectra + i * (config.halfTripleBatchSize + 1) + k) /= config.halfTripleBatchSize + 1;
             }
         }
         fftwf_destroy_plan(plan_fwd);
@@ -162,7 +162,7 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
     }
     for (int i = config.spectralRolloff1; i < config.spectralRolloff2; i++)
     {
-        *(slope + i) = (float)(i - config.spectralRolloff1 + 1) / (float)(config.spectralRolloff2 - config.spectralRolloff1 + 1);
+        *(slope + i) = (float)(i - config.spectralRolloff1) / (float)(config.spectralRolloff2 - config.spectralRolloff1 - 1);
     }
     for (int i = config.spectralRolloff2; i < config.halfTripleBatchSize + 1; i++)
     {
@@ -184,7 +184,7 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
                 *(highSpectra + i * (config.halfTripleBatchSize + 1) + j) = 0.001;
             }
             //blend both spectra and store the result in lowSpectra
-            *(lowSpectra + i * (config.halfTripleBatchSize + 1) + j) = (1. - *(slope + j)) * *(lowSpectra + i * (config.halfTripleBatchSize + 1) + j);
+            *(lowSpectra + i * (config.halfTripleBatchSize + 1) + j) *= 1. - *(slope + j);
             *(lowSpectra + i * (config.halfTripleBatchSize + 1) + j) += *(slope + j) * *(highSpectra + i * (config.halfTripleBatchSize + 1) + j);
         }
     }
@@ -377,7 +377,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         {
             limit = *(zeroTransitionsDown.content + zeroTransitionsDown.length - 1);
         }
-        candidateLength = findIndex(zeroTransitionsUp.content, zeroTransitionsUp.length, limit) - candidateOffset;
+        candidateLength = findIndex(zeroTransitionsUp.content, zeroTransitionsUp.length, limit) - candidateOffset;//check forpossible implications of zeroTrUp.len >? original limit
         if (candidateLength == 0)
         {
             //no candidates found; increase offset and try again
@@ -388,6 +388,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         //select candidate with highest derivative
         for (int i = 0; i < candidateLength; i++)
         {
+            if (candidateOffset + i >= zeroTransitionsUp.length) printf("ERROR!!!");
             index = *(zeroTransitionsUp.content + candidateOffset + i);
             derr = *(wave + index) - *(wave + index - 1);
             if (derr > maxDerr)
@@ -399,7 +400,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         dynIntArray_append(&upTransitionMarkers, maxIndex);
         //construct list of downwards transition candidates
         candidateOffset = findIndex(zeroTransitionsDown.content, zeroTransitionsDown.length, *upTransitionMarkers.content);
-        limit = *upTransitionMarkers.content + getLocalPitch(*upTransitionMarkers.content, sample, config);
+        limit = *upTransitionMarkers.content + getLocalPitch(*upTransitionMarkers.content, sample, config);//check if out of bounds like with previous limit
         candidateLength = findIndex(zeroTransitionsDown.content, zeroTransitionsDown.length, limit) - candidateOffset;
         if (candidateLength > 0)
         {
@@ -438,7 +439,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
     int localPitch;
     dynIntArray validTransitions;
     //loops until the entire sample is covered with markers
-    while (*(downTransitionMarkers.content + downTransitionMarkers.length - 1) < waveLength - (int)(*(sample.pitchDeltas + sample.config.pitchLength - 1) * config.DIOLastWinTolerance))
+    while (*(downTransitionMarkers.content + downTransitionMarkers.length - 1) < waveLength - (int)(*(sample.pitchDeltas + sample.config.pitchLength - 1) * config.DIOLastWinTolerance))//check for negative out-of-bounds
     {
         //convenience variables
         lastUp = *(upTransitionMarkers.content + upTransitionMarkers.length - 1);
@@ -458,7 +459,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
             transition = lastUp + lastPitch;
         }
         //ensure the transition is larger than the previous marker, even for very rapid decreases of the expected wavelength
-        if (transition < lastDown)
+        if (transition <= lastDown)
         {
             transition = lastDown + ceildiv(lastDown - *(downTransitionMarkers.content + downTransitionMarkers.length - 2), 2);
         }
@@ -469,13 +470,15 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
             limit = lastDown;
         }
         //start of the window of possible transitions
+        //check if limit is out of bounds (upper)
         start = findIndex(zeroTransitionsUp.content, zeroTransitionsUp.length, limit);
         //end of the window of possible transitions
         limit = lastUp + (1 + config.DIOTolerance) * lastPitch;
-        if (limit > waveLength)
+        if (limit >= waveLength)
         {
-            limit = waveLength;
+            limit = waveLength - 1;
         }
+        //check if limit is out of bounds (lower)
         //load all transitions within the window into validTransitions
         //TODO: replace validTransitions dynIntArray with pointer offsets on zeroTransitionsUp
         while (start < zeroTransitionsUp.length && *(zeroTransitionsUp.content + start) <= limit)
@@ -490,7 +493,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
             //correlate sample of one expected wavelength from current last upwards marker and candidate upwards marker
             float* sample = (float*) malloc(localPitch * sizeof(float));
             float* shiftedSample = (float*) malloc(localPitch * sizeof(float));
-            if (tmpTransition + localPitch > waveLength)
+            if (tmpTransition + localPitch >= waveLength)
             {
                 if (localPitch > lastUp) {
                     continue;
@@ -534,6 +537,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         {
             transition = lastUp + ceildiv(lastUp - *(upTransitionMarkers.content + upTransitionMarkers.length - 2), 2);
         }
+        //check if transition is out of wave bounds (upper)
         limit = lastDown + (1. - config.DIOTolerance) * lastPitch;
         if (limit < lastUp)
         {
@@ -545,6 +549,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         {
             limit = waveLength;
         }
+        //check if limit is out of bounds (lower)
         while (start < zeroTransitionsDown.length && *(zeroTransitionsDown.content + start) <= limit)
         {
             dynIntArray_append(&validTransitions, *(zeroTransitionsDown.content + start));
@@ -556,7 +561,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
             localPitch = getLocalPitch(tmpTransition, sample, config);
             float* sample = (float*) malloc(localPitch * sizeof(float));
             float* shiftedSample = (float*) malloc(localPitch * sizeof(float));
-            if (tmpTransition + localPitch > waveLength)
+            if (tmpTransition + localPitch >= waveLength)
             {
                 if (localPitch > lastDown)
                 {
@@ -599,6 +604,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
     {
         upTransitionMarkers.length--;
         downTransitionMarkers.length--;
+        printf("final length: %i, %1\n", upTransitionMarkers.length, downTransitionMarkers.length);
     }
     //check if sufficient markers have been found, and use fallback if that is not the case
     if (upTransitionMarkers.length <= 1)
@@ -641,7 +647,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     }
     for (int i = 0; i < padLength; i++)
     {
-        *(wave + padLength + sample.config.length + i) = *(sample.waveform + sample.config.length - 2 - i + 1);
+        *(wave + padLength + sample.config.length + i) = *(sample.waveform + sample.config.length - 2 - i);
     }
     //further variable definitions for later use
     int batches = ceildiv(sample.config.length, config.batchSize);
@@ -730,22 +736,27 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         float* markerSpace = (float*) malloc(markerLength * sizeof(float));
         for (int j = 0; j < markerLength; j++)
         {
-            *(localMarkers + j) = (float)(*(markers.markers + localMarkerStart + j) - i * config.batchSize);
-            *(markerSpace + j) = j;
+            *(localMarkers + j) = (float)(*(markers.markers + localMarkerStart + j) - i * config.batchSize);//undefined
+            *(markerSpace + j) = j;//0 to markerLength - 1
         }
-        float* harmonicsSpace = (float*) malloc(((markerLength - 1) * config.nHarmonics + 1) * sizeof(float));
+        float* harmonicsSpace = (float*) malloc(((markerLength - 1) * config.nHarmonics + 1) * sizeof(float));//0 to markerLength - 1
         for (int j = 0; j < (markerLength - 1) * config.nHarmonics + 1; j++)
         {
             *(harmonicsSpace + j) = j / (float)config.nHarmonics;
         }
-        float* windowSpace = (float*) malloc(config.tripleBatchSize * config.filterBSMult * sizeof(float));
+        float* windowSpace = (float*) malloc(config.tripleBatchSize * config.filterBSMult * sizeof(float));//0 to tBS * BSMult - 1
         for (int j = 0; j < config.tripleBatchSize * config.filterBSMult; j++)
         {
             *(windowSpace + j) = j;
         }
+        if (*(localMarkers + markerLength - 1) >= (float)(config.tripleBatchSize * config.filterBSMult)) printf("marker out of bounds! %f, %f\n", *(localMarkers + markerLength - 1), (float)(config.tripleBatchSize * config.filterBSMult));
         //perform interpolation and get pitch-synchronous version of waveform
-        float* interpolationPoints = interp(markerSpace, localMarkers, harmonicsSpace, markerLength, (markerLength - 1) * config.nHarmonics + 1);
+        printf("interp1\n");
+        float* interpolationPoints = interp(markerSpace, localMarkers, harmonicsSpace, markerLength, (markerLength - 1) * config.nHarmonics + 1);//undefined from localMarkers
+        printf("interp2\n");
+        if (*(interpolationPoints + (markerLength - 1) * config.nHarmonics) >= (float)(config.tripleBatchSize * config.filterBSMult)) printf("intermediate interp error! %f, %f\n", *(interpolationPoints + (markerLength - 1) * config.nHarmonics), (float)(config.tripleBatchSize * config.filterBSMult));
         float* interpolatedWave = interp(windowSpace, window, interpolationPoints, config.tripleBatchSize * config.filterBSMult, (markerLength - 1) * config.nHarmonics + 1);
+        printf("interp3\n");
         free(localMarkers);
         free(markerSpace);
         free(harmonicsSpace);
@@ -868,16 +879,13 @@ void averageSpectra(cSample sample, engineCfg config) {
         }
         for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
         {
-            //divide excitation by the spectrum
-            *(sample.excitation + i * (config.halfTripleBatchSize + 1) + j) /= *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j);
-            *(sample.excitation + (i + ceildiv(sample.config.length, config.batchSize)) * (config.halfTripleBatchSize + 1) + j) /= *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j);
             *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) -= *(sample.avgSpecharm + config.halfHarmonics + j);
         }
     }
     //dampen outliers if required
     if (sample.config.useVariance > 0)
     {
-        float variance = 0.;
+        /*float variance = 0.;
         float* variances = (float*) malloc((config.halfHarmonics + config.halfTripleBatchSize + 1) * sizeof(float));
         for (int i = 0; i < config.halfHarmonics + config.halfTripleBatchSize + 1; i++)
         {
@@ -912,6 +920,47 @@ void averageSpectra(cSample sample, engineCfg config) {
                     *(sample.specharm + j * config.frameSize + config.nHarmonics + 2 + i) /= *(variances + config.halfHarmonics + i);
                 }
             }
+        }*/
+        float variance = 0.;
+        float* variances = (float*)malloc(sample.config.batches * sizeof(float));
+        for (int i = 0; i < sample.config.batches; i++)
+        {
+            *(variances + i) = 0.;
+        }
+        for (int i = 0; i < sample.config.batches; i++) {
+            for (int j = 0; j < config.halfHarmonics; j++) {
+                *(variances + i) += pow(*(sample.specharm + i * config.frameSize + j), 2);
+            }
+            for (int j = 0; j < config.halfTripleBatchSize + 1; j++) {
+                *(variances + i) += pow(*(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j), 2);
+            }
+        }
+        for (int i = 0; i < sample.config.batches; i++) {
+            *(variances + i) = sqrtf(*(variances + i));
+            variance += *(variances + i);
+        }
+        variance /= sample.config.batches;
+        for (int i = 0; i < sample.config.batches; i++) {
+            *(variances + i) = *(variances + i) / variance - 1;
+        }
+        for (int i = 0; i < sample.config.batches; i++) {
+            if (*(variances + i) > 1) {
+                for (int j = 0; j < config.halfHarmonics; j++) {
+                    *(sample.specharm + i * config.frameSize + j) /= *(variances + i);
+                }
+                for (int j = config.nHarmonics + 2; j < config.halfTripleBatchSize + 1; j++) {
+                    *(sample.specharm + i * config.frameSize + j) /= *(variances + i);
+                }
+            }
+        }
+    }
+    for (int i = 0; i < sample.config.batches; i++)
+    {
+        for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
+        {
+            //divide excitation by the spectrum
+            *(sample.excitation + i * (config.halfTripleBatchSize + 1) + j) /= *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) + *(sample.avgSpecharm + config.halfHarmonics + j);
+            *(sample.excitation + (i + sample.config.batches) * (config.halfTripleBatchSize + 1) + j) /= *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) + *(sample.avgSpecharm + config.halfHarmonics + j);
         }
     }
 }

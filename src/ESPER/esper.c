@@ -11,7 +11,7 @@
 //main function for ESPER audio analysis. Accepts a cSample as argument, and writes the results of the analysis back into the appropriate fields of the sample.
 __declspec(dllexport) void __cdecl specCalc(cSample sample, engineCfg config)
 {
-    sample.config.batches = ceildiv(sample.config.length, config.batchSize);
+    sample.config.batches = (sample.config.length / config.batchSize) + 1;
     fftwf_complex* buffer = stft(sample.waveform, sample.config.length, config);
     float* signalsAbs = (float*) malloc(sample.config.batches * (config.halfTripleBatchSize + 1) * sizeof(float));
     #pragma omp parallel for
@@ -25,5 +25,5 @@ __declspec(dllexport) void __cdecl specCalc(cSample sample, engineCfg config)
     free(lowSpectra);
     free(highSpectra);
     separateVoicedUnvoiced(sample, config);
-    averageSpectra(sample, config);
+    //averageSpectra(sample, config);
 }

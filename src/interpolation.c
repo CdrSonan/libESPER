@@ -44,6 +44,8 @@ float* hPoly(float* input, int length)
 //all input arrays are expected to be sorted.
 float* interp(float* x, float* y, float* xs, int len, int lenxs)
 {
+    if (*xs < *x) printf("interp too low! %f %f\n", *xs, *x);
+    if (*(xs + lenxs - 1) > *(x + len - 1)) printf("interp too high! %f %f\n", *(xs + lenxs - 1), *(x + len - 1));
     //fill old space derivative array
     float* m = (float*) malloc(len * sizeof(float));
     for (int i = 0; i < (len - 1); i++)

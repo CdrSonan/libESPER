@@ -67,23 +67,23 @@ void irfft_inpl(fftwf_complex* input, int length, float* output)
 //The i-th window of the transform is centered at (i + 1/2) * config.batchSize, and reflection padding is applied to the signal as needed to accomplish this.
 fftwf_complex* stft(float* input, int length, engineCfg config)
 {
-    int batches = ceildiv(length, config.batchSize);
-    int rightpad = batches * config.batchSize - length + config.batchSize;
+    int batches = (length / config.batchSize) + 1;
+    int rightpad = batches * config.batchSize - length + config.halfTripleBatchSize;
     // extended input buffer aligned with batch size
-    float* in = (float*) malloc((config.batchSize + length + rightpad) * sizeof(float));
+    float* in = (float*) malloc((config.halfTripleBatchSize + length + rightpad) * sizeof(float));
     // fill input buffer, extend data with reflection padding on both sides
-    for (int i = 0; i < config.batchSize; i++)
+    for (int i = 0; i < config.halfTripleBatchSize; i++)
     {
-        *(in + i) = *(input + config.batchSize - i);
+        *(in + i) = *(input + config.halfTripleBatchSize - i);
     }
     #pragma omp parallel for
     for (int i = 0; i < length; i++)
     {
-        *(in + config.batchSize + i) = *(input + i);
+        *(in + config.halfTripleBatchSize + i) = *(input + i);
     }
     for (int i = 0; i < rightpad; i++)
     {
-        *(in + config.batchSize + length + i) = *(input + length - 2 - i);
+        *(in + config.halfTripleBatchSize + length + i) = *(input + length - 2 - i);
     }
     // allocate output buffer of desired size
     fftwf_complex* out = (fftwf_complex*) malloc(batches * (config.halfTripleBatchSize + 1) * sizeof(fftwf_complex));
@@ -91,7 +91,7 @@ fftwf_complex* stft(float* input, int length, engineCfg config)
     #pragma omp parallel for
     for (int i = 0; i < batches; i++)
     {
-        // allocation within loop for future openMP support
+        // allocation within loop for openMP support
         float* buffer = (float*) malloc((config.tripleBatchSize) * sizeof(float));
         for (int j = 0; j < config.tripleBatchSize; j++)
         {
@@ -129,8 +129,8 @@ float* istft(fftwf_complex* input, int batches, int targetLength, engineCfg conf
 {
     // fft setup
     // extended input buffer aligned with batch size
-    float* mainBuffer = (float*) malloc(config.batchSize * (batches + 2) * sizeof(float));
-    for (int i = 0; i < config.batchSize * (batches + 2); i++)
+    float* mainBuffer = (float*) malloc(config.batchSize * (batches + 3) * sizeof(float));
+    for (int i = 0; i < config.batchSize * (batches + 3); i++)
     {
         *(mainBuffer + i) = 0.;
     }
@@ -154,7 +154,7 @@ float* istft(fftwf_complex* input, int batches, int targetLength, engineCfg conf
     #pragma omp parallel for
     for (int i = 0; i < targetLength; i++)
     {
-        *(output + i) = *(mainBuffer + config.batchSize + i) * 2 / 3;
+        *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) * 2 / 3;
     }
     free(mainBuffer);
     return output;
@@ -166,9 +166,9 @@ float* istft_hann(fftwf_complex* input, int batches, int targetLength, engineCfg
 {
     // fft setup
     // extended input buffer aligned with batch size
-    float* mainBuffer = (float*) malloc(config.batchSize * (batches + 2) * sizeof(float));
+    float* mainBuffer = (float*) malloc(config.batchSize * (batches + 3) * sizeof(float));
     #pragma omp parallel for
-    for (int i = 0; i < config.batchSize * (batches + 2); i++)
+    for (int i = 0; i < config.batchSize * (batches + 3); i++)
     {
         *(mainBuffer + i) = 0.;
     }
@@ -192,7 +192,7 @@ float* istft_hann(fftwf_complex* input, int batches, int targetLength, engineCfg
     #pragma omp parallel for
     for (int i = 0; i < targetLength; i++)
     {
-        *(output + i) = *(mainBuffer + config.batchSize + i) * 2 / 3;
+        *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) * 2 / 3;
     }
     free(mainBuffer);
     return output;
