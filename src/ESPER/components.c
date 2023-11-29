@@ -675,7 +675,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         float* window = wave + i * config.batchSize;
         //get fitting segment of marker array
         unsigned int localMarkerStart = findIndex_double(markers.markers, markers.markerLength, i * config.batchSize);
-        unsigned int localMarkerEnd = findIndex_double(markers.markers, markers.markerLength, i * config.batchSize + config.tripleBatchSize * config.filterBSMult);
+        unsigned int localMarkerEnd = findIndex_double(markers.markers, markers.markerLength, i * config.batchSize + config.tripleBatchSize * config.filterBSMult - 1);
         unsigned int markerLength = localMarkerEnd - localMarkerStart;
         //check if there are sufficient markers to perform pitch-synchronous analysis
         if (markerLength <= 1)
@@ -736,9 +736,10 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         float* markerSpace = (float*) malloc(markerLength * sizeof(float));
         for (int j = 0; j < markerLength; j++)
         {
-            *(localMarkers + j) = (float)(*(markers.markers + localMarkerStart + j) - i * config.batchSize);//undefined
+            *(localMarkers + j) = (float)(*(markers.markers + localMarkerStart + j) - i * config.batchSize);//undefined, OOB ERROR!!!
             *(markerSpace + j) = j;//0 to markerLength - 1
         }
+        printf("m %f\n", *localMarkers);
         float* harmonicsSpace = (float*) malloc(((markerLength - 1) * config.nHarmonics + 1) * sizeof(float));//0 to markerLength - 1
         for (int j = 0; j < (markerLength - 1) * config.nHarmonics + 1; j++)
         {
@@ -749,14 +750,10 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         {
             *(windowSpace + j) = j;
         }
-        if (*(localMarkers + markerLength - 1) >= (float)(config.tripleBatchSize * config.filterBSMult)) printf("marker out of bounds! %f, %f\n", *(localMarkers + markerLength - 1), (float)(config.tripleBatchSize * config.filterBSMult));
         //perform interpolation and get pitch-synchronous version of waveform
-        printf("interp1\n");
-        float* interpolationPoints = interp(markerSpace, localMarkers, harmonicsSpace, markerLength, (markerLength - 1) * config.nHarmonics + 1);//undefined from localMarkers
-        printf("interp2\n");
-        if (*(interpolationPoints + (markerLength - 1) * config.nHarmonics) >= (float)(config.tripleBatchSize * config.filterBSMult)) printf("intermediate interp error! %f, %f\n", *(interpolationPoints + (markerLength - 1) * config.nHarmonics), (float)(config.tripleBatchSize * config.filterBSMult));
+        float* interpolationPoints = interp(markerSpace, localMarkers, harmonicsSpace, markerLength, (markerLength - 1) * config.nHarmonics + 1);
+        if (*(interpolationPoints + (markerLength - 1) * config.nHarmonics) > (float)(config.tripleBatchSize * config.filterBSMult - 1)) printf("interp end shift! %f %f\n", *(interpolationPoints + (markerLength - 1) * config.nHarmonics), (*(localMarkers + markerLength - 1)));
         float* interpolatedWave = interp(windowSpace, window, interpolationPoints, config.tripleBatchSize * config.filterBSMult, (markerLength - 1) * config.nHarmonics + 1);
-        printf("interp3\n");
         free(localMarkers);
         free(markerSpace);
         free(harmonicsSpace);
@@ -825,6 +822,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         {
             *(newSpace + j) = config.halfTripleBatchSize * (config.filterBSMult - 1) + j;
         }
+        printf("%f, %f\n", *interpolationPoints, *realHarmFunction);
         float* finalHarmFunction = extrap(interpolationPoints, realHarmFunction, newSpace, (markerLength - 1) * config.nHarmonics, config.tripleBatchSize);
         //rfft the result, and load it into globalHarmFunction
         rfft_inpl(finalHarmFunction, config.tripleBatchSize, globalHarmFunction + i * (config.halfTripleBatchSize + 1));
