@@ -397,7 +397,6 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
                 maxIndex = index;
             }
         }
-        dynIntArray_append(&upTransitionMarkers, maxIndex);
         //construct list of downwards transition candidates
         candidateOffset = findIndex(zeroTransitionsDown.content, zeroTransitionsDown.length, *upTransitionMarkers.content);
         limit = *upTransitionMarkers.content + getLocalPitch(*upTransitionMarkers.content, sample, config);//check if out of bounds like with previous limit
@@ -405,6 +404,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         if (candidateLength > 0)
         {
             //one or several downwards candidates found as well!
+            dynIntArray_append(&upTransitionMarkers, maxIndex);
             break;
         }
         //no downwards candidates found; increase offset and try again
@@ -426,6 +426,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         }
         dynIntArray_append(&downTransitionMarkers, maxIndex);
     }
+    printf("initial markers: %i, %i\n", *(downTransitionMarkers.content), *(upTransitionMarkers.content));
     //we now have an initial upTransitionMarker, followed by an initial downTransitionMarker within one expected wavelength.
     //With this, we can jump-start the algorithm.
     int lastPitch;
@@ -453,16 +454,23 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         if (upTransitionMarkers.length > 1)
         {
             transition = lastUp + lastDown - *(downTransitionMarkers.content + downTransitionMarkers.length - 2);
+            if (transition <= lastDown)
+            {
+                transition = lastDown + ceildiv(lastDown - *(downTransitionMarkers.content + downTransitionMarkers.length - 2), 2);
+            }
+            printf("up >1 %i %i %i ", lastUp, lastDown, *(downTransitionMarkers.content + downTransitionMarkers.length - 2));
         }
         else
         {
             transition = lastUp + lastPitch;
+            if (transition <= lastDown)
+            {
+                transition = lastDown + ceildiv(lastPitch, 2);
+            }
+            printf("up <=1 %i %i ", lastUp, lastPitch);
         }
         //ensure the transition is larger than the previous marker, even for very rapid decreases of the expected wavelength
-        if (transition <= lastDown)
-        {
-            transition = lastDown + ceildiv(lastDown - *(downTransitionMarkers.content + downTransitionMarkers.length - 2), 2);
-        }
+        printf("up default' %i ", transition);
         //set up search range
         limit = lastUp + (1. - config.DIOTolerance) * lastPitch;
         if (limit < lastDown)
@@ -533,10 +541,13 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         dynIntArray_dealloc(&validTransitions);
         dynIntArray_init(&validTransitions);
         transition = lastUp + lastDown - *(upTransitionMarkers.content + upTransitionMarkers.length - 2);
+        printf("down ini %i %i %i ", lastUp, lastDown, *(upTransitionMarkers.content + upTransitionMarkers.length - 2));
         if (transition < lastUp)
         {
             transition = lastUp + ceildiv(lastUp - *(upTransitionMarkers.content + upTransitionMarkers.length - 2), 2);
+            printf("down mod %i ", transition);
         }
+        printf("down default' %i\n", transition);
         //check if transition is out of wave bounds (upper)
         limit = lastDown + (1. - config.DIOTolerance) * lastPitch;
         if (limit < lastUp)
@@ -604,7 +615,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
     {
         upTransitionMarkers.length--;
         downTransitionMarkers.length--;
-        printf("final length: %i, %1\n", upTransitionMarkers.length, downTransitionMarkers.length);
+        printf("final length: %i, %i\n", upTransitionMarkers.length, downTransitionMarkers.length);
     }
     //check if sufficient markers have been found, and use fallback if that is not the case
     if (upTransitionMarkers.length <= 1)
@@ -752,7 +763,6 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         }
         //perform interpolation and get pitch-synchronous version of waveform
         float* interpolationPoints = interp(markerSpace, localMarkers, harmonicsSpace, markerLength, (markerLength - 1) * config.nHarmonics + 1);
-        if (*(interpolationPoints + (markerLength - 1) * config.nHarmonics) > (float)(config.tripleBatchSize * config.filterBSMult - 1)) printf("interp end shift! %f %f\n", *(interpolationPoints + (markerLength - 1) * config.nHarmonics), (*(localMarkers + markerLength - 1)));
         float* interpolatedWave = interp(windowSpace, window, interpolationPoints, config.tripleBatchSize * config.filterBSMult, (markerLength - 1) * config.nHarmonics + 1);
         free(localMarkers);
         free(markerSpace);
