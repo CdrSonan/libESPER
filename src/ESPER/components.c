@@ -426,7 +426,6 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         }
         dynIntArray_append(&downTransitionMarkers, maxIndex);
     }
-    printf("initial markers: %i, %i\n", *(downTransitionMarkers.content), *(upTransitionMarkers.content));
     //we now have an initial upTransitionMarker, followed by an initial downTransitionMarker within one expected wavelength.
     //With this, we can jump-start the algorithm.
     int lastPitch;
@@ -458,7 +457,6 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
             {
                 transition = lastDown + ceildiv(lastDown - *(downTransitionMarkers.content + downTransitionMarkers.length - 2), 2);
             }
-            printf("up >1 %i %i %i ", lastUp, lastDown, *(downTransitionMarkers.content + downTransitionMarkers.length - 2));
         }
         else
         {
@@ -467,10 +465,8 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
             {
                 transition = lastDown + ceildiv(lastPitch, 2);
             }
-            printf("up <=1 %i %i ", lastUp, lastPitch);
         }
         //ensure the transition is larger than the previous marker, even for very rapid decreases of the expected wavelength
-        printf("up default' %i ", transition);
         //set up search range
         limit = lastUp + (1. - config.DIOTolerance) * lastPitch;
         if (limit < lastDown)
@@ -541,13 +537,10 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         dynIntArray_dealloc(&validTransitions);
         dynIntArray_init(&validTransitions);
         transition = lastUp + lastDown - *(upTransitionMarkers.content + upTransitionMarkers.length - 2);
-        printf("down ini %i %i %i ", lastUp, lastDown, *(upTransitionMarkers.content + upTransitionMarkers.length - 2));
         if (transition < lastUp)
         {
             transition = lastUp + ceildiv(lastUp - *(upTransitionMarkers.content + upTransitionMarkers.length - 2), 2);
-            printf("down mod %i ", transition);
         }
-        printf("down default' %i\n", transition);
         //check if transition is out of wave bounds (upper)
         limit = lastDown + (1. - config.DIOTolerance) * lastPitch;
         if (limit < lastUp)
@@ -615,7 +608,6 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
     {
         upTransitionMarkers.length--;
         downTransitionMarkers.length--;
-        printf("final length: %i, %i\n", upTransitionMarkers.length, downTransitionMarkers.length);
     }
     //check if sufficient markers have been found, and use fallback if that is not the case
     if (upTransitionMarkers.length <= 1)
