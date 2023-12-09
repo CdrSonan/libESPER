@@ -35,7 +35,6 @@ float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
     {
         *(spectra + i) = *(signalsAbs + i);
     }
-
     fftwf_complex* f_spectra = (fftwf_complex*)malloc(sample.config.batches * (config.halfTripleBatchSize / 2 + 1) * sizeof(fftwf_complex));
     #pragma omp parallel for
     for (int i = 0; i < sample.config.batches; i++)
@@ -133,7 +132,9 @@ float* highRangeSmooth(cSample sample, float* signalsAbs, engineCfg config) {
                 *(spectra + j) = *(workingSpectra + j);
             }
             *(workingSpectra + j) = *(spectra + j);
+            if ((i == 0) && (j < specSize)) printf("%f, ", *(workingSpectra + j));
         }
+        if (i == 0) printf("\n");
     }
     free(workingSpectra);
     //remove padding and load the result into an output buffer
@@ -742,7 +743,6 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
             *(localMarkers + j) = (float)(*(markers.markers + localMarkerStart + j) - i * config.batchSize);//undefined, OOB ERROR!!!
             *(markerSpace + j) = j;//0 to markerLength - 1
         }
-        printf("m %f\n", *localMarkers);
         float* harmonicsSpace = (float*) malloc(((markerLength - 1) * config.nHarmonics + 1) * sizeof(float));//0 to markerLength - 1
         for (int j = 0; j < (markerLength - 1) * config.nHarmonics + 1; j++)
         {
@@ -824,7 +824,6 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         {
             *(newSpace + j) = config.halfTripleBatchSize * (config.filterBSMult - 1) + j;
         }
-        printf("%f, %f\n", *interpolationPoints, *realHarmFunction);
         float* finalHarmFunction = extrap(interpolationPoints, realHarmFunction, newSpace, (markerLength - 1) * config.nHarmonics, config.tripleBatchSize);
         //rfft the result, and load it into globalHarmFunction
         rfft_inpl(finalHarmFunction, config.tripleBatchSize, globalHarmFunction + i * (config.halfTripleBatchSize + 1));
