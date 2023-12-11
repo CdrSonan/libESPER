@@ -105,7 +105,7 @@ float* highRangeSmooth(cSample sample, float* signalsAbs, engineCfg config) {
         {
             for (int k = 0; k < specSize; k++)
             {
-                for (int l = 0; l < sample.config.specWidth; l++)
+                for (int l = 1; l < sample.config.specWidth + 1; l++)
                 {
                     lowK = k;
                     highK = k;
@@ -132,9 +132,7 @@ float* highRangeSmooth(cSample sample, float* signalsAbs, engineCfg config) {
                 *(spectra + j) = *(workingSpectra + j);
             }
             *(workingSpectra + j) = *(spectra + j);
-            if ((i == 0) && (j < specSize)) printf("%f, ", *(workingSpectra + j));
         }
-        if (i == 0) printf("\n");
     }
     free(workingSpectra);
     //remove padding and load the result into an output buffer
@@ -229,7 +227,7 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
         {
             for (int k = 0; k < config.halfTripleBatchSize + 1; k++)
             {
-                for (int l = 0; l < sample.config.tempWidth; l++)
+                for (int l = 1; l < sample.config.tempWidth + 1; l++)
                 {
                     lowJ = j;
                     highJ = j;
@@ -398,9 +396,9 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
                 maxIndex = index;
             }
         }
-        //construct list of downwards transition candidates
-        candidateOffset = findIndex(zeroTransitionsDown.content, zeroTransitionsDown.length, *upTransitionMarkers.content);
-        limit = *upTransitionMarkers.content + getLocalPitch(*upTransitionMarkers.content, sample, config);//check if out of bounds like with previous limit
+        //printf("u\n");
+        candidateOffset = findIndex(zeroTransitionsDown.content, zeroTransitionsDown.length, maxIndex);
+        limit = maxIndex + getLocalPitch(maxIndex, sample, config);//check if out of bounds like with previous limit
         candidateLength = findIndex(zeroTransitionsDown.content, zeroTransitionsDown.length, limit) - candidateOffset;
         if (candidateLength > 0)
         {
@@ -651,10 +649,10 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     }
     for (int i = 0; i < padLength; i++)
     {
-        *(wave + padLength + sample.config.length + i) = *(sample.waveform + sample.config.length - 2 - i);
+        *(wave + padLength + sample.config.length + i) = *(sample.waveform + sample.config.length - 1 - i);
     }
     //further variable definitions for later use
-    int batches = ceildiv(sample.config.length, config.batchSize);
+    int batches = sample.config.batches;
     fftwf_complex* globalHarmFunction = (fftwf_complex*) malloc(batches * (config.halfTripleBatchSize + 1) * sizeof(fftwf_complex));
     //Get DIO Pitch markers
     PitchMarkerStruct markers = calculatePitchMarkers(sample, wave, waveLength, config);

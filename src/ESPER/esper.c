@@ -21,14 +21,9 @@ __declspec(dllexport) void __cdecl specCalc(cSample sample, engineCfg config)
     free(buffer);
     float* lowSpectra = lowRangeSmooth(sample, signalsAbs, config);
     float* highSpectra = highRangeSmooth(sample, signalsAbs, config);
-    //finalizeSpectra(sample, lowSpectra, highSpectra, config);
-    //free(lowSpectra);
-    //free(highSpectra);
-    //separateVoicedUnvoiced(sample, config);
-    //averageSpectra(sample, config);
-    for (int i = 0; i < sample.config.batches; i++) {
-        for (int j = 0; j < config.halfTripleBatchSize + 1; j++) {
-            *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) = *(highSpectra + i * (config.halfTripleBatchSize + 1) + j);
-        }
-    }
+    finalizeSpectra(sample, lowSpectra, highSpectra, config);
+    free(lowSpectra);
+    free(highSpectra);
+    separateVoicedUnvoiced(sample, config);
+    averageSpectra(sample, config);
 }
