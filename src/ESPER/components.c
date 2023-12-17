@@ -14,7 +14,7 @@
 float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
 {
     //scale cutoff frequency based on window size
-    int specWidth = (int)((float)config.tripleBatchSize / (float)(sample.config.specWidth + 3) / fmax(sample.config.expectedPitch / 150., 1.));
+    int specWidth = (int)((float)config.tripleBatchSize / (float)(sample.config.specWidth + 3) / fmax(sample.config.expectedPitch / 440., 1.));
     float* spectra = (float*) malloc(sample.config.batches * (config.halfTripleBatchSize + 1) * sizeof(float));
     //define fourier-space windowing function for lowpass filter
     float* cutoffWindow = (float*) malloc((config.halfTripleBatchSize / 2 + 1) * sizeof(float));
@@ -189,7 +189,7 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
     }
     free(slope);
     //variable for the length of the data in the time dimension, with padding on both sides
-    unsigned int timeSize = sample.config.batches + 2 * sample.config.specDepth;
+    unsigned int timeSize = sample.config.batches + 2 * sample.config.tempDepth;
     //allocate buffers
     float* workingSpectra = (float*) malloc(timeSize * (config.halfTripleBatchSize + 1) * sizeof(float));
     float* spectra = (float*) malloc(timeSize * (config.halfTripleBatchSize + 1) * sizeof(float));
@@ -262,7 +262,14 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
     {
         for (int j = 0; j < (config.halfTripleBatchSize + 1); j++)
         {
-            *(sample.specharm + i * config.frameSize + 2 * config.halfHarmonics + j) = *(spectra + (sample.config.tempDepth + i) * (config.halfTripleBatchSize + 1) + j);
+            if (*(spectra + (sample.config.tempDepth + i) * (config.halfTripleBatchSize + 1) + j) < 0.001)
+            {
+                *(sample.specharm + i * config.frameSize + 2 * config.halfHarmonics + j) = 0.001;
+            }
+            else
+            {
+                *(sample.specharm + i * config.frameSize + 2 * config.halfHarmonics + j) = *(spectra + (sample.config.tempDepth + i) * (config.halfTripleBatchSize + 1) + j);
+            }
         }
     }
     free(spectra);
