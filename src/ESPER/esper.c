@@ -25,5 +25,5 @@ __declspec(dllexport) void __cdecl specCalc(cSample sample, engineCfg config)
     free(lowSpectra);
     free(highSpectra);
     separateVoicedUnvoiced(sample, config);
-    //averageSpectra(sample, config);
+    averageSpectra(sample, config);
 }

@@ -98,8 +98,8 @@ void loopSamplerPitch(int* input, int length, float* output, int targetLength, f
         //modify start of buffer to include transition
         for (int i = 0; i < effSpacing; i++)
         {
-            *(buffer + i) *= (float)(i) / (float)(effSpacing - 1);
-            *(buffer + i) += (float)*(input + length - effSpacing + i) * (1. - ((float)(i) / (float)(effSpacing - 1)));
+            *(buffer + i) *= (float)(i) / (float)(effSpacing);
+            *(buffer + i) += (float)*(input + length - effSpacing + i) * (1. - ((float)(i) / (float)(effSpacing)));
         }
         //add mid windows from buffer to output
         #pragma omp parallel for
