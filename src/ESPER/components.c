@@ -1,3 +1,10 @@
+//Copyright 2023 Johannes Klatt
+
+//This file is part of libESPER.
+//libESPER is free software: you can redistribute it and /or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.
+//libESPER is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+//You should have received a copy of the GNU General Public License along with Nova - Vox.If not, see <https://www.gnu.org/licenses/>.
+
 #include "src/ESPER/components.h"
 
 #include "fftw/fftw3.h"
@@ -394,7 +401,6 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         //select candidate with highest derivative
         for (int i = 0; i < candidateLength; i++)
         {
-            if (candidateOffset + i >= zeroTransitionsUp.length) printf("ERROR!!!");
             index = *(zeroTransitionsUp.content + candidateOffset + i);
             derr = *(wave + index) - *(wave + index - 1);
             if (derr > maxDerr)
@@ -403,7 +409,6 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
                 maxIndex = index;
             }
         }
-        //printf("u\n");
         candidateOffset = findIndex(zeroTransitionsDown.content, zeroTransitionsDown.length, maxIndex);
         limit = maxIndex + getLocalPitch(maxIndex, sample, config);//check if out of bounds like with previous limit
         candidateLength = findIndex(zeroTransitionsDown.content, zeroTransitionsDown.length, limit) - candidateOffset;
