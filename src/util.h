@@ -9,6 +9,22 @@
 
 #include "fftw/fftw3.h"
 
+#ifdef LIBESPER_BUILD
+    #ifdef _WIN32
+        #define LIBESPER_EXPORT __declspec(dllexport)
+    #elif __GNUC__ >= 4
+        #define LIBESPER_EXPORT __attribute__((visibility("default")))
+    #else
+        #define LIBESPER_EXPORT
+    #endif
+#else
+    #ifdef _WIN32
+        #define LIBESPER_EXPORT __declspec(dllimport)
+    #else
+        #define LIBESPER_EXPORT
+    #endif
+#endif
+
 //struct holding parameters related to data batching and spectral filtering shared across the entire engine.
 typedef struct
 {

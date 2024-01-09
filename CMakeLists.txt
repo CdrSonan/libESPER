@@ -13,7 +13,9 @@ add_library(esper SHARED
     src/interpolation.c
     src/util.c)
 target_include_directories(esper PRIVATE "${PROJECT_SOURCE_DIR}/")
+target_compile_definitions(esper PRIVATE LIBESPER_BUILD)
 set_property(TARGET esper PROPERTY C_STANDARD 11)
+set_property(TARGET esper PROPERTY C_VISIBILITY_PRESET hidden)
 target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw/libfftw3f-3.lib")
 
 add_library(resampler SHARED
@@ -22,6 +24,8 @@ add_library(resampler SHARED
     src/interpolation.c
     src/util.c)
 target_include_directories(resampler PRIVATE "${PROJECT_SOURCE_DIR}/")
+target_compile_definitions(resampler PRIVATE LIBESPER_BUILD)
 set_property(TARGET resampler PROPERTY C_STANDARD 11)
+set_property(TARGET resampler PROPERTY C_VISIBILITY_PRESET hidden)
 
 set_target_properties(esper resampler PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/build")
