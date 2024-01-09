@@ -16,7 +16,7 @@
 #include "src/ESPER/components.h"
 
 //main function for ESPER audio analysis. Accepts a cSample as argument, and writes the results of the analysis back into the appropriate fields of the sample.
-void __cdecl specCalc(cSample sample, engineCfg config)
+void LIBESPER_CDECL specCalc(cSample sample, engineCfg config)
 {
     sample.config.batches = (sample.config.length / config.batchSize) + 1;
     fftwf_complex* buffer = stft(sample.waveform, sample.config.length, config);

@@ -12,16 +12,21 @@
 #ifdef LIBESPER_BUILD
     #ifdef _WIN32
         #define LIBESPER_EXPORT __declspec(dllexport)
+        #define LIBESPER_CDECL __cdecl
     #elif __GNUC__ >= 4
         #define LIBESPER_EXPORT __attribute__((visibility("default")))
+        #define LIBESPER_CDECL __attribute__((__cdecl__))
     #else
         #define LIBESPER_EXPORT
+        #define LIBESPER_CDECL
     #endif
 #else
     #ifdef _WIN32
         #define LIBESPER_EXPORT __declspec(dllimport)
+        #define LIBESPER_CDECL __cdecl
     #else
         #define LIBESPER_EXPORT
+        #define LIBESPER_CDECL
     #endif
 #endif
 

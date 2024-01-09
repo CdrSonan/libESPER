@@ -13,7 +13,7 @@
 
 //fallback function for calculating the approximate time-dependent pitch of a sample.
 //Used when the Torchaudio implementation fails, likely due to a too narrow search range setting or the sample being too short.
-__declspec(dllexport) void __cdecl pitchCalcFallback(cSample sample, engineCfg config) {
+void LIBESPER_CDECL pitchCalcFallback(cSample sample, engineCfg config) {
     //limits for autocorrelation search
     unsigned int batchSize = (int)((1. + sample.config.searchRange) * (float)config.sampleRate / (float)sample.config.expectedPitch);
     unsigned int lowerLimit = (int)((1. - sample.config.searchRange) * (float)config.sampleRate / (float)sample.config.expectedPitch);

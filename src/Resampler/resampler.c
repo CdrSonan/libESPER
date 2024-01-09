@@ -13,7 +13,7 @@
 #include "src/Resampler/loop.h"
 
 //C implementation of the ESPER specharm resampler. Respects loop spacing setting and start/end fading flags.
-void __cdecl resampleSpecharm(float* avgSpecharm, float* specharm, int length, float* steadiness, float spacing, int startCap, int endCap, float* output, segmentTiming timings, engineCfg config)
+void LIBESPER_CDECL resampleSpecharm(float* avgSpecharm, float* specharm, int length, float* steadiness, float spacing, int startCap, int endCap, float* output, segmentTiming timings, engineCfg config)
 {
     float* buffer = (float*) malloc(timings.windowEnd * config.frameSize * sizeof(float));
     //loop specharm
@@ -75,7 +75,7 @@ void __cdecl resampleSpecharm(float* avgSpecharm, float* specharm, int length, f
 }
 
 //C implementation of the ESPER pitch resampler. Respects loop spacing setting and start/end fading flags.
-void __cdecl resamplePitch(int* pitchDeltas, int length, float pitch, float spacing, int startCap, int endCap, float* output, int requiredSize, segmentTiming timings)
+void LIBESPER_CDECL resamplePitch(int* pitchDeltas, int length, float pitch, float spacing, int startCap, int endCap, float* output, int requiredSize, segmentTiming timings)
 {
     //loop pitch
     loopSamplerPitch(pitchDeltas, length, output, requiredSize, spacing);
