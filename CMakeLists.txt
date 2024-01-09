@@ -16,7 +16,11 @@ target_include_directories(esper PRIVATE "${PROJECT_SOURCE_DIR}/")
 target_compile_definitions(esper PRIVATE LIBESPER_BUILD)
 set_property(TARGET esper PROPERTY C_STANDARD 11)
 set_property(TARGET esper PROPERTY C_VISIBILITY_PRESET hidden)
-target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw/libfftw3f-3.lib")
+if (WIN32)
+    target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw_win/libfftw3f-3.lib")
+else()
+    target_include_directories(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw")
+endif(WIN32)
 
 add_library(resampler SHARED
     src/Resampler/resampler.c

@@ -8,7 +8,7 @@
 #pragma once
 
 #include "src/util.h"
-#include "fftw/fftw3.h"
+#include LIBESPER_FFTW_INCLUDE_PATH
 
 fftwf_complex* fft(fftwf_complex* input, int length);
 

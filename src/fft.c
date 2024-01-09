@@ -7,7 +7,7 @@
 
 #include "src/fft.h"
 
-#include "fftw/fftw3.h"
+#include LIBESPER_FFTW_INCLUDE_PATH
 #include <malloc.h>
 #include <math.h>
 #include "src/util.h"

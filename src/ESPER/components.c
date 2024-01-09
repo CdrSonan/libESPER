@@ -7,13 +7,13 @@
 
 #include "src/ESPER/components.h"
 
-#include "fftw/fftw3.h"
 #include <malloc.h>
 #include <math.h>
 #include <stdio.h>
 #include "src/util.h"
 #include "src/fft.h"
 #include "src/interpolation.h"
+#include LIBESPER_FFTW_INCLUDE_PATH
 
 //spectral smoothing/envelope calculation function based on the True Envelope Estimator algorithm.
 //produces diverging oscillations in the high frequency range for typical vocal spectra.

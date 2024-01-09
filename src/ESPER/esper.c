@@ -7,13 +7,13 @@
 
 #include "src/ESPER/esper.h"
 
-#include "fftw/fftw3.h"
 #include <malloc.h>
 #include <stdio.h>
 #include <math.h>
 #include "src/util.h"
 #include "src/fft.h"
 #include "src/ESPER/components.h"
+#include LIBESPER_FFTW_INCLUDE_PATH
 
 //main function for ESPER audio analysis. Accepts a cSample as argument, and writes the results of the analysis back into the appropriate fields of the sample.
 void LIBESPER_CDECL specCalc(cSample sample, engineCfg config)

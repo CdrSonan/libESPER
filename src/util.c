@@ -7,9 +7,9 @@
 
 #include "src/util.h"
 
-#include "fftw/fftw3.h"
 #include <malloc.h>
 #include <math.h>
+#include LIBESPER_FFTW_INCLUDE_PATH
 
 //initializes a dynamic integer array, and allocates memory for it
 void dynIntArray_init(dynIntArray* array)
