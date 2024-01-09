@@ -15,11 +15,11 @@
     #elif __GNUC__ >= 4
         #define LIBESPER_EXPORT __attribute__((visibility("default")))
         #define LIBESPER_CDECL __attribute__((__cdecl__))
-        #define LIBESPER_FFTW_INCLUDE_PATH "fftw/fftw3.h"
+        #define LIBESPER_FFTW_INCLUDE_PATH "fftw/api/fftw3.h"
     #else
         #define LIBESPER_EXPORT
         #define LIBESPER_CDECL
-        #define LIBESPER_FFTW_INCLUDE_PATH "fftw/fftw3.h"
+        #define LIBESPER_FFTW_INCLUDE_PATH "fftw/api/fftw3.h"
     #endif
 #else
     #ifdef _WIN32
@@ -29,7 +29,7 @@
     #else
         #define LIBESPER_EXPORT
         #define LIBESPER_CDECL
-        #define LIBESPER_FFTW_INCLUDE_PATH "fftw/fftw3.h"
+        #define LIBESPER_FFTW_INCLUDE_PATH "fftw/api/fftw3.h"
     #endif
 #endif
 
