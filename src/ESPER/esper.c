@@ -1,4 +1,4 @@
-//Copyright 2023 Johannes Klatt
+//Copyright 2023 - 2024 Johannes Klatt
 
 //This file is part of libESPER.
 //libESPER is free software: you can redistribute it and /or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.

@@ -1,4 +1,4 @@
-//Copyright 2023 Johannes Klatt
+//Copyright 2023 - 2024 Johannes Klatt
 
 //This file is part of libESPER.
 //libESPER is free software: you can redistribute it and /or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.
@@ -161,7 +161,11 @@ float* istft(fftwf_complex* input, int batches, int targetLength, engineCfg conf
     #pragma omp parallel for
     for (int i = 0; i < targetLength; i++)
     {
-        *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) * 2 / 3;
+        *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) / 3 / config.tripleBatchSize;
+    }
+    for (int i = 0; i < config.batchSize / 2; i++) {
+        *(output + i) *= 3. / 2.;
+        *(output + targetLength - 1 - i) *= 3. / 2.;
     }
     free(mainBuffer);
     return output;
@@ -190,7 +194,7 @@ float* istft_hann(fftwf_complex* input, int batches, int targetLength, engineCfg
         for (int j = 0; j < config.tripleBatchSize; j++)
         {
             // fill result into main buffer with overlap
-            *(mainBuffer + i * config.batchSize + j) += *(buffer + j)* pow(sin(pi * j / (config.tripleBatchSize - 1)), 2);
+            *(mainBuffer + i * config.batchSize + j) += *(buffer + j) * pow(sin(pi * j / config.tripleBatchSize), 2);
         }
     }
     free(buffer);
@@ -199,8 +203,13 @@ float* istft_hann(fftwf_complex* input, int batches, int targetLength, engineCfg
     #pragma omp parallel for
     for (int i = 0; i < targetLength; i++)
     {
-        *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) * 2 / 3;
+        *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) * (8. / 9.) / config.tripleBatchSize;
     }
+    for (int i = 0; i < config.batchSize / 2; i++) {
+        *(output + i) /= 1. - pow(sin(pi * (i + 2.5 * config.batchSize) / config.tripleBatchSize), 2) / 5.;
+        *(output + targetLength - 1 - i) /= 1. - pow(sin(pi * (i + 2.5 * config.batchSize) / config.tripleBatchSize), 2) / 5.;
+    }
+    //!!!!!!!!!!The number 5 is arbitrary. This procedure comes close to the first-window correction of the PyTorch STFT, but is still slightly wrong.!!!!!!!!!!
     free(mainBuffer);
     return output;
 }

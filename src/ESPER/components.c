@@ -1,4 +1,4 @@
-//Copyright 2023 Johannes Klatt
+//Copyright 2023 - 2024 Johannes Klatt
 
 //This file is part of libESPER.
 //libESPER is free software: you can redistribute it and /or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.
@@ -131,7 +131,6 @@ float* highRangeSmooth(cSample sample, float* signalsAbs, engineCfg config) {
             }
         }
         //load maximum of (smoothed) spectra and (non-smoothed) workingSpectra into both buffers
-        #pragma omp parallel for
         for (int j = 0; j < sample.config.batches * specSize; j++)
         {
             if (*(workingSpectra + j) > *(spectra + j))
@@ -835,6 +834,10 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
             *(newSpace + j) = config.halfTripleBatchSize * (config.filterBSMult - 1) + j;
         }
         float* finalHarmFunction = extrap(interpolationPoints, realHarmFunction, newSpace, (markerLength - 1) * config.nHarmonics, config.tripleBatchSize);
+        for (int j = 0; j < config.tripleBatchSize; j++)
+        {
+            *(finalHarmFunction + j) *= pow(sin(pi * j / config.tripleBatchSize), 2);
+        }
         //rfft the result, and load it into globalHarmFunction
         rfft_inpl(finalHarmFunction, config.tripleBatchSize, globalHarmFunction + i * (config.halfTripleBatchSize + 1));
         free(finalHarmFunction);
@@ -847,10 +850,15 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     //globalHarmFunction represents the voiced signal in time-synchronous space.
     //Subtract it from the waveform now, and store the residuals as unvoiced excitation
     float* altWave = istft_hann(globalHarmFunction, batches, sample.config.length, config);
+    //for (int i = 0; i < sample.config.batches / 3; i++) {
+    //    for (int j = 0; j < config.halfTripleBatchSize + 1; j++) {
+    //        *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) = *(altWave + i * (config.halfTripleBatchSize + 1) + j);
+    //    }
+    //}
     #pragma omp parallel for
     for (int i = 0; i < sample.config.length; i++)
     {
-        *(altWave + i) = *(sample.waveform + i) - (*(altWave + i) / config.tripleBatchSize);
+        *(altWave + i) = *(sample.waveform + i) - (*(altWave + i));
     }
     stft_inpl(altWave, sample.config.length, config, sample.excitation);
 }
