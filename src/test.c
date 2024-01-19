@@ -34,7 +34,7 @@ testData readWithConfig(testConfig config)
     }
     int end = config.inputOffsets[config.index];
     int inlength = end - start;
-    float* indata = malloc((end - start) * sizeof(float));
+    float* indata = (float*)malloc((end - start) * sizeof(float));
     fread(indata, sizeof(float), end - start, config.input);
     if (config.index == 0)
     {
@@ -45,7 +45,7 @@ testData readWithConfig(testConfig config)
         start = config.inputOffsets[config.index - 1];
     }
     end = config.inputOffsets[config.index];
-    float* outdata = malloc((end - start) * sizeof(float));
+    float* outdata = (float*)malloc((end - start) * sizeof(float));
     fread(outdata, sizeof(float), end - start, config.output);
     testData returnVal;
     returnVal.indata = indata;
@@ -58,21 +58,25 @@ testData readWithConfig(testConfig config)
 int testPitchCalcFallback(testConfig config)
 {
     testData data = readWithConfig(config);
+    return 0;
 }
 
 int testSpecCalc(testConfig config)
 {
     testData data = readWithConfig(config);
+    return 0;
 }
 
 int testResampleSpecharm(testConfig config)
 {
     testData data = readWithConfig(config);
+    return 0;
 }
 
 int testResamplePitch(testConfig config)
 {
     testData data = readWithConfig(config);
+    return 0;
 }
 
 int main(void)

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(libESPER VERSION 0.7.6 LANGUAGES C)
 
+enable_testing()
+
 add_library(esper SHARED
     src/ESPER/esper.c
     src/ESPER/pitchCalcFallback.c
@@ -28,9 +30,7 @@ target_compile_definitions(resampler PRIVATE LIBESPER_BUILD)
 set_property(TARGET resampler PROPERTY C_STANDARD 11)
 set_property(TARGET resampler PROPERTY C_VISIBILITY_PRESET hidden)
 
-set_target_properties(esper resampler PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/build")
-
-add_executable(test
+add_executable(test_esper
     src/ESPER/esper.c
     src/ESPER/pitchCalcFallback.c
     src/ESPER/components.c
@@ -40,12 +40,16 @@ add_executable(test
     src/interpolation.c
     src/util.c
     src/test.c)
-target_include_directories(test PRIVATE "${PROJECT_SOURCE_DIR}/")
-target_compile_definitions(test PRIVATE LIBESPER_BUILD)
-set_property(TARGET test PROPERTY C_STANDARD 11)
+target_include_directories(test_esper PRIVATE "${PROJECT_SOURCE_DIR}/")
+target_compile_definitions(test_esper PRIVATE LIBESPER_BUILD)
+set_property(TARGET test_esper PROPERTY C_STANDARD 11)
+add_test(NAME test_esper COMMAND test_esper WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/")
 if (WIN32)
-    target_link_libraries(test PRIVATE "${PROJECT_SOURCE_DIR}/fftw_win/libfftw3f-3.lib")
+    target_link_libraries(test_esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw_win/libfftw3f-3.lib")
+    SET_TESTS_PROPERTIES( test_esper PROPERTIES ENVIRONMENT "${PROJECT_SOURCE_DIR}/fftw_win;$ENV{PATH}" )
 else()
-    target_include_directories(test PRIVATE "${PROJECT_SOURCE_DIR}/fftw")
+    target_include_directories(test_esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw")
+    SET_TESTS_PROPERTIES( test_esper PROPERTIES ENVIRONMENT "PATH=${PROJECT_SOURCE_DIR}/fftw;$ENV{PATH}" )
 endif(WIN32)
-add_test(NAME test_esper COMMAND test WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/")
+
+set_target_properties(esper resampler test_esper PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/build")
