@@ -1,28 +1,105 @@
 #include <stdio.h>
 
-const uint nTests = 5;
+#define nTests 4
 
-int main(void) {
-  FILE* input = fopen("test_input.bin", rb);
-  uint[nTests] inputOffsets;
-  fread(inputOffsets, sizeof(uint), nTests, input);
-  FILE* output = fopen("test_output.bin", rb);
-  uint[nTests] outputOffsets;
-  fread(outputOffsets, sizeof(uint), nTests, output);
-  returnCode = 0;
-  
-  fclose(input);
-  fclose(output);
-  return returnCode;
+typedef struct
+{
+    float* indata;
+    float* outdata;
+    int inlength;
+    int outlength;
+}
+testData;
+
+typedef struct
+{
+    FILE* input;
+    FILE* output;
+    int inputOffsets[nTests];
+    int outputOffsets[nTests];
+    int index;
+}
+testConfig;
+
+testData readWithConfig(testConfig config)
+{
+    int start;
+    if (config.index == 0)
+    {
+        start = 0;
+    }
+    else
+    {
+        start = config.inputOffsets[config.index - 1];
+    }
+    int end = config.inputOffsets[config.index];
+    int inlength = end - start;
+    float* indata = malloc((end - start) * sizeof(float));
+    fread(indata, sizeof(float), end - start, config.input);
+    if (config.index == 0)
+    {
+        start = 0;
+    }
+    else
+    {
+        start = config.inputOffsets[config.index - 1];
+    }
+    end = config.inputOffsets[config.index];
+    float* outdata = malloc((end - start) * sizeof(float));
+    fread(outdata, sizeof(float), end - start, config.output);
+    testData returnVal;
+    returnVal.indata = indata;
+    returnVal.outdata = outdata;
+    returnVal.inlength = inlength;
+    returnVal.outlength = end - start;
+    return returnVal;
 }
 
-float* readWithIndex(FILE* file, uint[nTests] offsets, uint index) {
-  if (index == 0) {
-    uint start = 0;
-  } else {
-    uint start = offsets[index - 1];
-  }
-  uint end = offsets[index];
-  float* content = malloc((end - start) * sizeof(float));
-  fread(content, sizeof(float), end - start, file);
+int testPitchCalcFallback(testConfig config)
+{
+    testData data = readWithConfig(config);
+}
+
+int testSpecCalc(testConfig config)
+{
+    testData data = readWithConfig(config);
+}
+
+int testResampleSpecharm(testConfig config)
+{
+    testData data = readWithConfig(config);
+}
+
+int testResamplePitch(testConfig config)
+{
+    testData data = readWithConfig(config);
+}
+
+int main(void)
+{
+    FILE* input = fopen("test_data/test_input.bin", "rb");
+    int inputOffsets[nTests];
+    fread(inputOffsets, sizeof(int), nTests, input);
+    FILE* output = fopen("test_data/test_output.bin", "rb");
+    int outputOffsets[nTests];
+    fread(outputOffsets, sizeof(int), nTests, output);
+    testConfig config;
+    config.input = input;
+    config.output = output;
+    for (int i = 0; i < nTests; i++) {
+        config.inputOffsets[i] = inputOffsets[i];
+        config.outputOffsets[i] = outputOffsets[i];
+    }
+    int returnCode = 0;
+    config.index = 0;
+    returnCode += testPitchCalcFallback(config);
+    config.index = 1;
+    returnCode += 2 * testSpecCalc(config);
+    config.index = 2;
+    returnCode += 4 * testResampleSpecharm(config);
+    config.index = 3;
+    returnCode += 8 * testResamplePitch(config);
+    fclose(input);
+    fclose(output);
+    return returnCode;
 }
