@@ -50,10 +50,10 @@ set_target_properties(esper resampler test_esper PROPERTIES RUNTIME_OUTPUT_DIREC
 if (WIN32)
     target_link_libraries(test_esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw_win/libfftw3f-3.lib")
     SET_TESTS_PROPERTIES(test_esper PROPERTIES ENVIRONMENT "${PROJECT_SOURCE_DIR}/fftw_win;$ENV{PATH}")
-    add_custom_command(TARGET test_esper POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/fftw_win/libfftw3f-3.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/libfftw3f-3.dll)
+    add_custom_command(TARGET test_esper POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftw_win/libfftw3f-3.dll" "${PROJECT_SOURCE_DIR}/build/release/libfftw3f-3.dll")
 else()
     target_include_directories(test_esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw")
     SET_TESTS_PROPERTIES( test_esper PROPERTIES ENVIRONMENT "PATH=${PROJECT_SOURCE_DIR}/fftw;$ENV{PATH}")
-    add_custom_command(TARGET test_esper POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/fftw/libfftw3f-3.so ${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}/libfftw3f-3.so)
+    add_custom_command(TARGET test_esper POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftw/libfftw3f-3.so" "${PROJECT_SOURCE_DIR}/build/release/libfftw3f-3.so")
 endif(WIN32)
 
