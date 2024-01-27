@@ -121,6 +121,7 @@ float* extrap(float* x, float* y, float* xs, int len, int lenxs)
     float* ynew;
     //flag indicating whether the xnew and ynew buffers need to be de-allocated
     int freeNew = 1;
+    int newLen = len;
     if ((*xs < *x) && (*(xs + lenxs - 1) > *(x + len - 1))) //both append and prepend required
     {
         xnew = (float*) malloc((len + 2) * sizeof(float));
@@ -134,6 +135,7 @@ float* extrap(float* x, float* y, float* xs, int len, int lenxs)
         *ynew = smallY;
         *(xnew + len + 1) = *(xs + lenxs - 1);
         *(ynew + len + 1) = largeY;
+        newLen += 2;
     }
     else
     {
@@ -148,6 +150,7 @@ float* extrap(float* x, float* y, float* xs, int len, int lenxs)
             }
             *xnew = *xs;
             *ynew = smallY;
+            newLen++;
         }
         else if (*(xs + lenxs - 1) > *(x + len - 1)) //only append required
         {
@@ -160,6 +163,7 @@ float* extrap(float* x, float* y, float* xs, int len, int lenxs)
             }
             *(xnew + len) = *(xs + lenxs - 1);
             *(ynew + len) = largeY;
+            newLen++;
         }
         else //neither append nor prepend required. Just call interp() without allocating a new buffer or adding extrapolated elements
         {
@@ -170,7 +174,7 @@ float* extrap(float* x, float* y, float* xs, int len, int lenxs)
     }
     //perform interpolation
     float* ys = (float*) malloc(lenxs * sizeof(float));
-    ys = interp(xnew, ynew, xs, len + 1, lenxs);
+    ys = interp(xnew, ynew, xs, newLen, lenxs);
     //free buffers if necessary
     if (freeNew == 1)
     {
