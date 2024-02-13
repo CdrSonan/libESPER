@@ -687,8 +687,8 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         }
         float* window = wave + i * config.batchSize;
         //get fitting segment of marker array
-        unsigned int localMarkerStart = findIndex_double(markers.markers, markers.markerLength, i * config.batchSize);
-        unsigned int localMarkerEnd = findIndex_double(markers.markers, markers.markerLength, i * config.batchSize + config.tripleBatchSize * config.filterBSMult - 1);
+        unsigned int localMarkerStart = max(findIndex_double(markers.markers, markers.markerLength, i * config.batchSize) - 1, 0);
+        unsigned int localMarkerEnd = findIndex_double(markers.markers, markers.markerLength, i * config.batchSize + config.tripleBatchSize * config.filterBSMult);
         unsigned int markerLength = localMarkerEnd - localMarkerStart;
         //check if there are sufficient markers to perform pitch-synchronous analysis
         if (markerLength <= 1)
@@ -749,28 +749,43 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         float* markerSpace = (float*) malloc(markerLength * sizeof(float));
         for (int j = 0; j < markerLength; j++)
         {
-            *(localMarkers + j) = (float)(*(markers.markers + localMarkerStart + j) - i * config.batchSize);//undefined, OOB ERROR!!!
-            *(markerSpace + j) = j;//0 to markerLength - 1
+            *(localMarkers + j) = (float)(*(markers.markers + localMarkerStart + j) - i * config.batchSize);
+            *(markerSpace + j) = j;
         }
-        float* harmonicsSpace = (float*) malloc(((markerLength - 1) * config.nHarmonics + 1) * sizeof(float));//0 to markerLength - 1
-        for (int j = 0; j < (markerLength - 1) * config.nHarmonics + 1; j++)
-        {
-            *(harmonicsSpace + j) = j / (float)config.nHarmonics;
-        }
-        float* windowSpace = (float*) malloc(config.tripleBatchSize * config.filterBSMult * sizeof(float));//0 to tBS * BSMult - 1
-        for (int j = 0; j < config.tripleBatchSize * config.filterBSMult; j++)
+        int windowLength = config.tripleBatchSize * config.filterBSMult;
+        float* windowSpace = (float*) malloc(windowLength * sizeof(float));
+        for (int j = 0; j < windowLength; j++)
         {
             *(windowSpace + j) = j;
         }
         //perform interpolation and get pitch-synchronous version of waveform
-        float* interpolationPoints = interp(markerSpace, localMarkers, harmonicsSpace, markerLength, (markerLength - 1) * config.nHarmonics + 1);
-        float* interpolatedWave = interp(windowSpace, window, interpolationPoints, config.tripleBatchSize * config.filterBSMult, (markerLength - 1) * config.nHarmonics + 1);
+        float* evaluationPoints = extrap(localMarkers, markerSpace, windowSpace, markerLength, windowLength);
         free(localMarkers);
         free(markerSpace);
-        free(harmonicsSpace);
         free(windowSpace);
+        fftwf_complex* harmFunction = (fftwf_complex*)malloc(config.halfHarmonics * sizeof(fftwf_complex));
+        float norm = (*(markers.markers + localMarkerEnd) - *(markers.markers + localMarkerStart)) / markerLength / windowLength;
+        float multiplier;
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+            (*(harmFunction + j))[0] = 0.;
+            (*(harmFunction + j))[1] = 0.;
+            
+            for (int k = 0; k < windowLength; k++)
+            {
+                multiplier = norm * (*(evaluationPoints + max(k - 1, 0)) - *(evaluationPoints + min(k + 1, windowLength - 1))) / 2.;
+                (*(harmFunction + j))[0] += *(window + k) * cos(-2. * pi * j * *(evaluationPoints + k)) * multiplier;
+                    
+                (*(harmFunction + j))[1] += *(window + k) * sin(-2. * pi * j * *(evaluationPoints + k)) * multiplier;
+            }
+            *(sample.specharm + i * config.frameSize + j) = cpxAbsf(*(harmFunction + j));
+            *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
+        }
+
+
+
         //perform rfft on each window
-        fftwf_complex* harmFunction = (fftwf_complex*) malloc((markerLength - 1) * config.halfHarmonics * sizeof(fftwf_complex));
+        
         for (int j = 0; j < (markerLength - 1); j++)
         {
             rfft_inpl(interpolatedWave + j * config.nHarmonics, config.nHarmonics, harmFunction + j * config.halfHarmonics);
