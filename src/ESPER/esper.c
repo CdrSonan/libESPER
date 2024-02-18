@@ -23,7 +23,7 @@ void LIBESPER_CDECL specCalc(cSample sample, engineCfg config)
     float* signalsAbs = (float*) malloc(sample.config.batches * (config.halfTripleBatchSize + 1) * sizeof(float));
     #pragma omp parallel for
     for (int i = 0; i < sample.config.batches * (config.halfTripleBatchSize + 1); i++) {
-        *(signalsAbs + i) = sqrtf(cpxAbsf(*(buffer + i)));
+        *(signalsAbs + i) = sqrtf(cpxAbsf(*(buffer + i)) / config.tripleBatchSize * 4.);
     }
     free(buffer);
     float* lowSpectra = lowRangeSmooth(sample, signalsAbs, config);

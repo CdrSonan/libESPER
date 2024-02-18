@@ -649,12 +649,11 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     int waveLength = sample.config.length + 2 * padLength;
     int windowLength = config.tripleBatchSize * config.filterBSMult;
     float* wave = (float*) malloc(waveLength * sizeof(float));
-    float* voicedSignal = (float*)malloc(waveLength * sizeof(float));
+    float* unvoicedSignal = (float*)malloc(waveLength * sizeof(float));
     // fill input buffer, extend data with reflection padding on both sides
     for (int i = 0; i < padLength; i++)
     {
         *(wave + i) = *(sample.waveform + padLength - i - 1);
-        *(voicedSignal + i) = 0.f;
     }
     #pragma omp parallel for
     for (int i = 0; i < sample.config.length; i++)
@@ -665,10 +664,14 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     {
         *(wave + padLength + sample.config.length + i) = *(sample.waveform + sample.config.length - 1 - i);
     }
+    for (int i = 0; i < waveLength; i++)
+    {
+        *(unvoicedSignal + i) = 0.f;
+    }
     //further variable definitions for later use
     float* hannWindow = (float*)malloc(windowLength * sizeof(float));
     for (int i = 0; i < windowLength; i++) {
-        *(hannWindow + i) = powf(sinf(pi / windowLength), 2.f) * 2.f / (3.f * config.filterBSMult);
+        *(hannWindow + i) = pow(sin((pi / windowLength) * i), 2.) * 2. / (3. * config.filterBSMult);
     }
     int batches = sample.config.batches;
     //Get DIO Pitch markers
@@ -699,11 +702,11 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
             localMarkerEnd = markers.markerLength - 1;
         }
         float* offsetWindow = wave + (int)*(markers.markers + localMarkerStart);
-        int offsetWindowLength = (int)*(markers.markers + localMarkerEnd) - (int)*(markers.markers + localMarkerStart) + 1;
-        int windowOffset = i * config.batchSize - (int)*(markers.markers + localMarkerStart);
+        int offsetWindowLength = (int)*(markers.markers + localMarkerEnd) - (int)ceil(*(markers.markers + localMarkerStart)) + 1;
+        int windowOffset = i * config.batchSize - (int)ceil(*(markers.markers + localMarkerStart));
         int markerLength = localMarkerEnd - localMarkerStart + 1;
         fftwf_complex* harmFunction = (fftwf_complex*)malloc(config.halfHarmonics * sizeof(fftwf_complex));
-        float* voicedSignalPart = (float*)malloc(windowLength * sizeof(float));
+        float* unvoicedSignalPart = (float*)malloc(windowLength * sizeof(float));
         float* evaluationPoints;
         //check if there are sufficient markers to perform pitch-synchronous analysis
         if (markerLength <= 1)
@@ -722,7 +725,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
             float* markerSpace = (float*)malloc(markerLength * sizeof(float));
             for (int j = 0; j < markerLength; j++)
             {
-                *(localMarkers + j) = *(markers.markers + localMarkerStart + j) - (int)*(markers.markers + localMarkerStart);
+                *(localMarkers + j) = *(markers.markers + localMarkerStart + j) - (int)ceil(*(markers.markers + localMarkerStart));
                 *(markerSpace + j) = j;
             }
             float* windowSpace = (float*)malloc(offsetWindowLength * sizeof(float));
@@ -741,20 +744,27 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         {
             (*(harmFunction + j))[0] = 0.;
             (*(harmFunction + j))[1] = 0.;
-
             for (int k = 0; k < offsetWindowLength; k++)
             {
                 if (k == 0)
                 {
-                    multiplier = (*(evaluationPoints + 1) - *(evaluationPoints)) / (markerLength - 1) / 2.;
+                    multiplier = (*(evaluationPoints + 1) - *(evaluationPoints)) / (markerLength - 1);
+                    if (ceil(*(markers.markers + localMarkerStart)) != *(markers.markers + localMarkerStart))
+                    {
+                        multiplier += *(evaluationPoints) / (markerLength - 1) * 2.;
+                    }
                 }
                 else if (k == offsetWindowLength - 1)
                 {
-                    multiplier = (*(evaluationPoints + offsetWindowLength - 1) - *(evaluationPoints + k - 1)) / (markerLength - 1) / 2.;
+                    multiplier = (*(evaluationPoints + offsetWindowLength - 1) - *(evaluationPoints + offsetWindowLength - 2)) / (markerLength - 1);
+                    if (floor(*(markers.markers + localMarkerEnd)) != *(markers.markers + localMarkerEnd))
+                    {
+                        multiplier += (markerLength - 1 - *(evaluationPoints + offsetWindowLength - 1)) / (markerLength - 1) * 2.;
+                    }
                 }
                 else
                 {
-                    multiplier = (*(evaluationPoints + k + 1) - *(evaluationPoints + k - 1)) / (markerLength - 1) / 2.;
+                    multiplier = (*(evaluationPoints + k + 1) - *(evaluationPoints + k - 1)) / (markerLength - 1);
                 }
                 (*(harmFunction + j))[0] += *(offsetWindow + k) * cos(-2. * pi * j * *(evaluationPoints + k)) * multiplier;
 
@@ -763,25 +773,37 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
             *(sample.specharm + i * config.frameSize + j) = cpxAbsf(*(harmFunction + j));
             *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
         }
-        for (int j = 0; j < windowLength; j++) {
-            *(voicedSignalPart + j) = 0.;
-            for (int k = 0; k < config.halfHarmonics; k++) {
-                *(voicedSignalPart + j) += cpxAbsf(*(harmFunction + k)) * cos(cpxArgf(*(harmFunction + k)) + 2. * pi * k * *(evaluationPoints + windowOffset + j));
+        for (int j = 0; j < windowLength; j++)
+        {
+            *(unvoicedSignalPart + j) = 0.;
+            for (int k = 0; k < config.halfHarmonics; k++)
+            {
+                if (windowOffset + j < 0)
+                {
+                    float extrapolatedPoint = *evaluationPoints + (windowOffset + j) * (*(evaluationPoints + 1) - *evaluationPoints);
+                    *(unvoicedSignalPart + j) += cpxAbsf(*(harmFunction + k)) * cos(cpxArgf(*(harmFunction + k)) + 2. * pi * k * extrapolatedPoint);
+                }
+                else if (windowOffset + j >= offsetWindowLength)
+                {
+                    float extrapolatedPoint = *(evaluationPoints + offsetWindowLength - 1) + (windowOffset + j - offsetWindowLength + 1) * (*(evaluationPoints + offsetWindowLength - 1) - *(evaluationPoints + offsetWindowLength - 2));
+                    *(unvoicedSignalPart + j) += cpxAbsf(*(harmFunction + k)) * cos(cpxArgf(*(harmFunction + k)) + 2. * pi * k * extrapolatedPoint);
+                }
+                else
+                {
+                    *(unvoicedSignalPart + j) += cpxAbsf(*(harmFunction + k)) * cos(cpxArgf(*(harmFunction + k)) + 2. * pi * k * *(evaluationPoints + windowOffset + j));
+                }
             }
+            *(unvoicedSignalPart + j) = *(unvoicedSignalPart + j)  - *(window + j);
         }
         free(harmFunction);
-        for (int j = 0; j < windowLength; j++) {
-            *(voicedSignal + i * config.batchSize + j) += *(hannWindow + j) * *(voicedSignalPart + j);
+        for (int j = 0; j < windowLength; j++)
+        {
+            *(unvoicedSignal + i * config.batchSize + j) += *(hannWindow + j) * *(unvoicedSignalPart + j) * 4 / config.tripleBatchSize;
         }
-        free(voicedSignalPart);
+        free(unvoicedSignalPart);
     }
-    #pragma omp parallel for
-    for (int i = 0; i < sample.config.length; i++)
-    {
-        *(voicedSignal + i) = *(sample.waveform + i) - (*(voicedSignal + padLength + i));
-    }
-    stft_inpl(voicedSignal, sample.config.length, config, sample.excitation);
-    free(voicedSignal);
+    stft_inpl(unvoicedSignal, sample.config.length, config, sample.excitation);
+    free(unvoicedSignal);
 }
 
 //averages all harmonic amplitudes and spectra, stores the result in the avgSpecharm field of the sample, and overwrites the specharms with their difference from the average.
