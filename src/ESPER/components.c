@@ -802,7 +802,14 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         }
         free(unvoicedSignalPart);
     }
-    stft_inpl(unvoicedSignal, sample.config.length, config, sample.excitation);
+    if (sample.config.isVoiced == 0)
+    {
+        stft_inpl(wave, sample.config.length, config, sample.excitation);
+    }
+    else
+    {
+        stft_inpl(unvoicedSignal, sample.config.length, config, sample.excitation);
+    }
     free(unvoicedSignal);
 }
 
