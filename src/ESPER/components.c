@@ -640,6 +640,40 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
     return output;
 }
 
+float calculatePhaseContinuity(float phaseA, float phaseB)
+{
+    float phaseDiff;
+    if (phaseA > phaseB)
+    {
+        phaseDiff = fmin(phaseA - phaseB, phaseB - phaseA + 2. * pi);
+    }
+    else
+    {
+        phaseDiff = fmin(phaseB - phaseA, phaseA - phaseB + 2. * pi);
+    }
+    return pow(cos(phaseDiff / 2.), 2.);
+}
+
+void applyPhaseContinuity(cSample sample, engineCfg config, int index, float* continuity)
+{
+    for (int i = 0; i < config.halfHarmonics; i++)
+    {
+        float phase = *(sample.specharm + index * config.frameSize + config.halfHarmonics + i);
+        float previousPhase = *(sample.specharm + (index - 1) * config.frameSize + config.halfHarmonics + i);
+        *(continuity + i) = calculatePhaseContinuity(phase, previousPhase);
+    }
+}
+
+void applyAmplitudeContinuity(cSample sample, engineCfg config, int index, float* continuity)
+{
+    for (int i = 0; i < config.halfHarmonics; i++)
+    {
+        float current = *(sample.specharm + index * config.frameSize + i);
+        float previous = *(sample.specharm + (index - 1) * config.frameSize + i);
+        *(continuity + i) = (1. - fabs(current - previous) / current);
+    }
+}
+
 //separates voiced and unvoiced excitation of a sample through pitch-synchronous analysis.
 //Implicitely requires pitch data to be included in the sample to work correctly.
 void separateVoicedUnvoiced(cSample sample, engineCfg config)
@@ -676,8 +710,8 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     int batches = sample.config.batches;
     //Get DIO Pitch markers
     PitchMarkerStruct markers = calculatePitchMarkers(sample, wave, waveLength, config);
+    float* continuity = (float*)malloc(config.halfHarmonics);
     //Loop over each window
-    #pragma omp parallel for
     for (int i = 0; i < batches; i++)
     {
         //separation calculations are only necessary if the sample is voiced
@@ -773,6 +807,17 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
             *(sample.specharm + i * config.frameSize + j) = cpxAbsf(*(harmFunction + j));
             *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
         }
+        if (i > 0)
+        {
+            //applyPhaseContinuity(sample, config, i, continuity);
+            for (int j = 0; j < config.halfHarmonics; j++)
+            {
+                //printf("%f, ", *(continuity + j));
+                //*(sample.specharm + (i - 1) * config.frameSize + j) *= *(continuity + j);
+                //*(sample.specharm + i * config.frameSize + j) *= *(continuity + j);
+            }
+            //printf("\n");
+        }
         for (int j = 0; j < windowLength; j++)
         {
             *(unvoicedSignalPart + j) = 0.;
@@ -802,6 +847,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         }
         free(unvoicedSignalPart);
     }
+    free(continuity);
     if (sample.config.isVoiced == 0)
     {
         stft_inpl(wave, sample.config.length, config, sample.excitation);
@@ -853,42 +899,6 @@ void averageSpectra(cSample sample, engineCfg config)
     //dampen outliers if required
     if (sample.config.useVariance > 0)
     {
-        /*float variance = 0.;
-        float* variances = (float*) malloc((config.halfHarmonics + config.halfTripleBatchSize + 1) * sizeof(float));
-        for (int i = 0; i < config.halfHarmonics + config.halfTripleBatchSize + 1; i++)
-        {
-            *(variances + i) = 0.;
-        }
-        for (int i = 0; i < sample.config.batches; i++) {
-            for (int j = 0; j < config.halfHarmonics; j++) {
-                *(variances + j) += pow(*(sample.specharm + i * config.frameSize + j), 2);
-            }
-            for (int j = 0; j < config.halfTripleBatchSize + 1; j++) {
-                *(variances + config.halfHarmonics + j) += pow(*(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j), 2);
-            }
-        }
-        for (int i = 0; i < config.halfHarmonics + config.halfTripleBatchSize + 1; i++) {
-            *(variances + i) = sqrtf(*(variances + i));
-            variance += *(variances + i);
-        }
-        variance /= sample.config.batches;
-        for (int i = 0; i < config.halfHarmonics + config.halfTripleBatchSize + 1; i++) {
-            *(variances + i) = *(variances + i) / variance - 1;
-        }
-        for (int i = 0; i < config.halfHarmonics; i++) {
-            if (*(variances + i) > 1) {
-                for (int j = 0; j < sample.config.batches; j++) {
-                    *(sample.specharm + j * config.frameSize + i) /= *(variances + i);
-                }
-            }
-        }
-        for (int i = 0; i < config.halfTripleBatchSize + 1; i++) {
-            if (*(variances + config.halfHarmonics + i) > 1) {
-                for (int j = 0; j < sample.config.batches; j++) {
-                    *(sample.specharm + j * config.frameSize + config.nHarmonics + 2 + i) /= *(variances + config.halfHarmonics + i);
-                }
-            }
-        }*/
         float variance = 0.;
         float* variances = (float*)malloc(sample.config.batches * sizeof(float));
         for (int i = 0; i < sample.config.batches; i++)
