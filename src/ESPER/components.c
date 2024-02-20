@@ -642,36 +642,8 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
 
 float calculatePhaseContinuity(float phaseA, float phaseB)
 {
-    float phaseDiff;
-    if (phaseA > phaseB)
-    {
-        phaseDiff = fmin(phaseA - phaseB, phaseB - phaseA + 2. * pi);
-    }
-    else
-    {
-        phaseDiff = fmin(phaseB - phaseA, phaseA - phaseB + 2. * pi);
-    }
-    return pow(cos(phaseDiff / 2.), 2.);
-}
-
-void applyPhaseContinuity(cSample sample, engineCfg config, int index, float* continuity)
-{
-    for (int i = 0; i < config.halfHarmonics; i++)
-    {
-        float phase = *(sample.specharm + index * config.frameSize + config.halfHarmonics + i);
-        float previousPhase = *(sample.specharm + (index - 1) * config.frameSize + config.halfHarmonics + i);
-        *(continuity + i) = calculatePhaseContinuity(phase, previousPhase);
-    }
-}
-
-void applyAmplitudeContinuity(cSample sample, engineCfg config, int index, float* continuity)
-{
-    for (int i = 0; i < config.halfHarmonics; i++)
-    {
-        float current = *(sample.specharm + index * config.frameSize + i);
-        float previous = *(sample.specharm + (index - 1) * config.frameSize + i);
-        *(continuity + i) = (1. - fabs(current - previous) / current);
-    }
+    float phaseDiff = fmin(phaseB - phaseA, phaseA - phaseB);
+    return cos(phaseDiff / 2.);
 }
 
 //separates voiced and unvoiced excitation of a sample through pitch-synchronous analysis.
@@ -710,7 +682,16 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     int batches = sample.config.batches;
     //Get DIO Pitch markers
     PitchMarkerStruct markers = calculatePitchMarkers(sample, wave, waveLength, config);
-    float* continuity = (float*)malloc(config.halfHarmonics);
+    float* phases = (float*)malloc(config.halfHarmonics * sizeof(float));
+    for (int i = 0; i < config.halfHarmonics; i++)
+    {
+        *(phases + i) = 1.;
+    }
+    float* continuity = (float*)malloc(config.halfHarmonics * sizeof(float));
+    for (int i = 0; i < config.halfHarmonics; i++)
+    {
+        *(continuity + i) = 1.;
+    }
     //Loop over each window
     for (int i = 0; i < batches; i++)
     {
@@ -804,19 +785,14 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
 
                 (*(harmFunction + j))[1] += *(offsetWindow + k) * sin(-2. * pi * j * *(evaluationPoints + k)) * multiplier;
             }
-            *(sample.specharm + i * config.frameSize + j) = cpxAbsf(*(harmFunction + j));
-            *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
-        }
-        if (i > 0)
-        {
-            //applyPhaseContinuity(sample, config, i, continuity);
-            for (int j = 0; j < config.halfHarmonics; j++)
+            float newContinuity = calculatePhaseContinuity(*(phases + j), cpxArgf(*(harmFunction + j)));
+            *(sample.specharm + i * config.frameSize + j) = cpxAbsf(*(harmFunction + j)) * newContinuity;
+            if (i > 0)
             {
-                //printf("%f, ", *(continuity + j));
-                //*(sample.specharm + (i - 1) * config.frameSize + j) *= *(continuity + j);
-                //*(sample.specharm + i * config.frameSize + j) *= *(continuity + j);
+                *(sample.specharm + (i - 1) * config.frameSize + j) *= newContinuity;
             }
-            //printf("\n");
+            *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
+            *(phases + j) = cpxArgf(*(harmFunction + j));
         }
         for (int j = 0; j < windowLength; j++)
         {
@@ -843,11 +819,11 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         free(harmFunction);
         for (int j = 0; j < windowLength; j++)
         {
-            *(unvoicedSignal + i * config.batchSize + j) += *(hannWindow + j) * *(unvoicedSignalPart + j) * 4 / config.tripleBatchSize;
+            *(unvoicedSignal + i * config.batchSize + j) += *(hannWindow + j) * *(unvoicedSignalPart + j);
         }
         free(unvoicedSignalPart);
     }
-    free(continuity);
+    free(phases);
     if (sample.config.isVoiced == 0)
     {
         stft_inpl(wave, sample.config.length, config, sample.excitation);
@@ -897,7 +873,7 @@ void averageSpectra(cSample sample, engineCfg config)
         }
     }
     //dampen outliers if required
-    if (sample.config.useVariance > 0)
+    if (0)//(sample.config.useVariance > 0)
     {
         float variance = 0.;
         float* variances = (float*)malloc(sample.config.batches * sizeof(float));
@@ -939,6 +915,8 @@ void averageSpectra(cSample sample, engineCfg config)
             //divide excitation by the spectrum
             *(sample.excitation + i * (config.halfTripleBatchSize + 1) + j) /= *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) + *(sample.avgSpecharm + config.halfHarmonics + j);
             *(sample.excitation + (i + sample.config.batches) * (config.halfTripleBatchSize + 1) + j) /= *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) + *(sample.avgSpecharm + config.halfHarmonics + j);
+            *(sample.excitation + i * (config.halfTripleBatchSize + 1) + j) *= 4. / config.tripleBatchSize;
+            *(sample.excitation + (i + sample.config.batches) * (config.halfTripleBatchSize + 1) + j) *= 4. / config.tripleBatchSize;
         }
     }
 }
