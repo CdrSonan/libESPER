@@ -383,7 +383,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         //increase offset until a valid list of upTransitionCandidates for the first upwards transition is obtained
         candidateOffset = offset;
         //search for candidates within one expected wavelength from the current offset
-        limit = *(zeroTransitionsUp.content + offset) + getLocalPitch(*(zeroTransitionsDown.content + zeroTransitionsDown.length - 1), sample, config);
+        limit = *(zeroTransitionsUp.content + offset) + sample.config.pitch;
         //limit search to the length of the waveform
         if (*(zeroTransitionsDown.content + zeroTransitionsDown.length - 1) < limit)
         {
@@ -659,7 +659,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     // fill input buffer, extend data with reflection padding on both sides
     for (int i = 0; i < padLength; i++)
     {
-        *(wave + i) = *(sample.waveform + padLength - i - 1);
+        *(wave + i) = *sample.waveform;
     }
     #pragma omp parallel for
     for (int i = 0; i < sample.config.length; i++)
@@ -668,7 +668,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     }
     for (int i = 0; i < padLength; i++)
     {
-        *(wave + padLength + sample.config.length + i) = *(sample.waveform + sample.config.length - 1 - i);
+        *(wave + padLength + sample.config.length + i) = *(sample.waveform + sample.config.length - 1);
     }
     for (int i = 0; i < waveLength; i++)
     {
@@ -785,11 +785,11 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
 
                 (*(harmFunction + j))[1] += *(offsetWindow + k) * sin(-2. * pi * j * *(evaluationPoints + k)) * multiplier;
             }
-            float newContinuity = calculatePhaseContinuity(*(phases + j), cpxArgf(*(harmFunction + j)));
-            *(sample.specharm + i * config.frameSize + j) = cpxAbsf(*(harmFunction + j)) * newContinuity;
+            *(continuity + j) = 0.8 * *(continuity + j) + 0.2 * calculatePhaseContinuity(*(phases + j), cpxArgf(*(harmFunction + j)));
+            *(sample.specharm + i * config.frameSize + j) = cpxAbsf(*(harmFunction + j)) * *(continuity + j);
             if (i > 0)
             {
-                *(sample.specharm + (i - 1) * config.frameSize + j) *= newContinuity;
+                *(sample.specharm + (i - 1) * config.frameSize + j) *= *(continuity + j);
             }
             *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
             *(phases + j) = cpxArgf(*(harmFunction + j));
@@ -823,14 +823,14 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         }
         free(unvoicedSignalPart);
     }
-    free(phases);
+    //free(phases);
     if (sample.config.isVoiced == 0)
     {
-        stft_inpl(wave, sample.config.length, config, sample.excitation);
+        stft_inpl(sample.waveform, sample.config.length, config, sample.excitation);
     }
     else
     {
-        stft_inpl(unvoicedSignal, sample.config.length, config, sample.excitation);
+        stft_inpl(unvoicedSignal + padLength, sample.config.length, config, sample.excitation);
     }
     free(unvoicedSignal);
 }
