@@ -682,11 +682,11 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     int batches = sample.config.batches;
     //Get DIO Pitch markers
     PitchMarkerStruct markers = calculatePitchMarkers(sample, wave, waveLength, config);
-    float* phases = (float*)malloc(config.halfHarmonics * sizeof(float));
-    for (int i = 0; i < config.halfHarmonics; i++)
-    {
-        *(phases + i) = 1.;
-    }
+    //float* phases = (float*)malloc(config.halfHarmonics * sizeof(float));
+    //for (int i = 0; i < config.halfHarmonics; i++)
+    //{
+    //    *(phases + i) = 1.;
+    //}
     float* continuity = (float*)malloc(config.halfHarmonics * sizeof(float));
     for (int i = 0; i < config.halfHarmonics; i++)
     {
@@ -720,18 +720,35 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         int offsetWindowLength = (int)*(markers.markers + localMarkerEnd) - (int)ceil(*(markers.markers + localMarkerStart)) + 1;
         int windowOffset = i * config.batchSize - (int)ceil(*(markers.markers + localMarkerStart));
         int markerLength = localMarkerEnd - localMarkerStart + 1;
+        int noiseWindowLength;
+        int noiseMarkerLength;
+        int noiseMarkerEnd;
+        if (markerLength % 2 == 1)
+        {
+            noiseWindowLength = offsetWindowLength;
+            noiseMarkerLength = markerLength;
+            noiseMarkerEnd = localMarkerEnd;
+        }
+        else
+        {
+            noiseWindowLength = (int)*(markers.markers + localMarkerEnd - 1) - (int)ceil(*(markers.markers + localMarkerStart)) + 1;
+            noiseMarkerLength = markerLength - 1;
+            noiseMarkerEnd = localMarkerEnd - 1;
+        }
         fftwf_complex* harmFunction = (fftwf_complex*)malloc(config.halfHarmonics * sizeof(fftwf_complex));
+        fftwf_complex* noiseFunction = (fftwf_complex*)malloc(config.halfHarmonics * sizeof(fftwf_complex));
+        float* noiseCompensation = (float*)malloc(config.halfHarmonics * sizeof(float));
         float* unvoicedSignalPart = (float*)malloc(windowLength * sizeof(float));
         float* evaluationPoints;
         //check if there are sufficient markers to perform pitch-synchronous analysis
-        if (markerLength <= 1)
+        if (markerLength <= 2)
         {
             evaluationPoints = (float*)malloc(offsetWindowLength * sizeof(float));
             for (int j = 0; j < offsetWindowLength; j++)
             {
                 *(evaluationPoints + j) = (j - windowOffset) / sample.config.pitch;
             }
-            markerLength = 1;
+            markerLength = 2;
         }
         else
         {
@@ -759,6 +776,8 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         {
             (*(harmFunction + j))[0] = 0.;
             (*(harmFunction + j))[1] = 0.;
+            (*(noiseFunction + j))[0] = 0.;
+            (*(noiseFunction + j))[1] = 0.;
             for (int k = 0; k < offsetWindowLength; k++)
             {
                 if (k == 0)
@@ -782,17 +801,47 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
                     multiplier = (*(evaluationPoints + k + 1) - *(evaluationPoints + k - 1)) / (markerLength - 1);
                 }
                 (*(harmFunction + j))[0] += *(offsetWindow + k) * cos(-2. * pi * j * *(evaluationPoints + k)) * multiplier;
-
                 (*(harmFunction + j))[1] += *(offsetWindow + k) * sin(-2. * pi * j * *(evaluationPoints + k)) * multiplier;
             }
-            *(continuity + j) = 0.8 * *(continuity + j) + 0.2 * calculatePhaseContinuity(*(phases + j), cpxArgf(*(harmFunction + j)));
-            *(sample.specharm + i * config.frameSize + j) = cpxAbsf(*(harmFunction + j)) * *(continuity + j);
-            if (i > 0)
+            for (int k = 0; k < noiseWindowLength; k++)
             {
-                *(sample.specharm + (i - 1) * config.frameSize + j) *= *(continuity + j);
+                if (k == 0)
+                {
+                    multiplier = (*(evaluationPoints + 1) - *(evaluationPoints)) / (noiseMarkerLength - 1);
+                    if (ceil(*(markers.markers + localMarkerStart)) != *(markers.markers + localMarkerStart))
+                    {
+                        multiplier += *(evaluationPoints) / (noiseMarkerLength - 1) * 2.;
+                    }
+                }
+                else if (k == noiseWindowLength - 1)
+                {
+                    multiplier = (*(evaluationPoints + noiseWindowLength - 1) - *(evaluationPoints + noiseWindowLength - 2)) / (noiseMarkerLength - 1);
+                    if (floor(*(markers.markers + noiseMarkerEnd)) != *(markers.markers + noiseMarkerEnd))
+                    {
+                        multiplier += (noiseMarkerLength - 1 - *(evaluationPoints + noiseWindowLength - 1)) / (noiseMarkerLength - 1) * 2.;
+                    }
+                }
+                else
+                {
+                    multiplier = (*(evaluationPoints + k + 1) - *(evaluationPoints + k - 1)) / (noiseMarkerLength - 1);
+                }
+                (*(noiseFunction + j))[0] += *(offsetWindow + k) * cos(-2. * pi * ((float)j + 0.5) * *(evaluationPoints + k)) * multiplier;
+                (*(noiseFunction + j))[1] += *(offsetWindow + k) * sin(-2. * pi * ((float)j + 0.5) * *(evaluationPoints + k)) * multiplier;
             }
+            *(noiseCompensation + j) = cpxAbsf(*(noiseFunction + j));
+            if (j > 0)
+            {
+                *(noiseCompensation + j) = (*(noiseCompensation + j) + cpxAbsf(*(noiseFunction + j - 1))) / 2.;
+            }
+            *(continuity + j) = 0.8 * *(continuity + j) + 0.2 * *(noiseCompensation + j);
+            *(sample.specharm + i * config.frameSize + j) = fmax(cpxAbsf(*(harmFunction + j)) - *(continuity + j) - *(noiseCompensation + j), 0.);
+            //*(sample.specharm + i * config.frameSize + j) = *(noiseCompensation + j);
+            //if (i > 0)
+            //{
+            //    *(sample.specharm + (i - 1) * config.frameSize + j) *= *(continuity + j);
+            //}
             *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
-            *(phases + j) = cpxArgf(*(harmFunction + j));
+            //*(phases + j) = cpxArgf(*(harmFunction + j));
         }
         for (int j = 0; j < windowLength; j++)
         {
@@ -817,6 +866,8 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
             *(unvoicedSignalPart + j) = *(unvoicedSignalPart + j)  - *(window + j);
         }
         free(harmFunction);
+        free(noiseFunction);
+        free(noiseCompensation);
         for (int j = 0; j < windowLength; j++)
         {
             *(unvoicedSignal + i * config.batchSize + j) += *(hannWindow + j) * *(unvoicedSignalPart + j);
@@ -824,6 +875,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         free(unvoicedSignalPart);
     }
     //free(phases);
+    free(continuity);
     if (sample.config.isVoiced == 0)
     {
         stft_inpl(sample.waveform, sample.config.length, config, sample.excitation);
