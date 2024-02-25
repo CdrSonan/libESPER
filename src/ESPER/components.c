@@ -682,15 +682,20 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     int batches = sample.config.batches;
     //Get DIO Pitch markers
     PitchMarkerStruct markers = calculatePitchMarkers(sample, wave, waveLength, config);
-    //float* phases = (float*)malloc(config.halfHarmonics * sizeof(float));
-    //for (int i = 0; i < config.halfHarmonics; i++)
-    //{
-    //    *(phases + i) = 1.;
-    //}
+    float* phases = (float*)malloc(config.halfHarmonics * sizeof(float));
+    for (int i = 0; i < config.halfHarmonics; i++)
+    {
+        *(phases + i) = 1.;
+    }
     float* continuity = (float*)malloc(config.halfHarmonics * sizeof(float));
     for (int i = 0; i < config.halfHarmonics; i++)
     {
         *(continuity + i) = 1.;
+    }
+    float* noiseCompensation = (float*)malloc(config.halfHarmonics * sizeof(float));
+    for (int i = 0; i < config.halfHarmonics; i++)
+    {
+        *(noiseCompensation + i) = 0.;
     }
     //Loop over each window
     for (int i = 0; i < batches; i++)
@@ -737,7 +742,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         }
         fftwf_complex* harmFunction = (fftwf_complex*)malloc(config.halfHarmonics * sizeof(fftwf_complex));
         fftwf_complex* noiseFunction = (fftwf_complex*)malloc(config.halfHarmonics * sizeof(fftwf_complex));
-        float* noiseCompensation = (float*)malloc(config.halfHarmonics * sizeof(float));
+        float newContinuity;
         float* unvoicedSignalPart = (float*)malloc(windowLength * sizeof(float));
         float* evaluationPoints;
         //check if there are sufficient markers to perform pitch-synchronous analysis
@@ -828,20 +833,19 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
                 (*(noiseFunction + j))[0] += *(offsetWindow + k) * cos(-2. * pi * ((float)j + 0.5) * *(evaluationPoints + k)) * multiplier;
                 (*(noiseFunction + j))[1] += *(offsetWindow + k) * sin(-2. * pi * ((float)j + 0.5) * *(evaluationPoints + k)) * multiplier;
             }
-            *(noiseCompensation + j) = cpxAbsf(*(noiseFunction + j));
-            if (j > 0)
+            if (j > 2)
             {
-                *(noiseCompensation + j) = (*(noiseCompensation + j) + cpxAbsf(*(noiseFunction + j - 1))) / 2.;
+                *(noiseCompensation + j) = fmax((cpxAbsf(*(noiseFunction + j)) + cpxAbsf(*(noiseFunction + j - 1))) / 2., 0.8 * *(noiseCompensation + j) + 0.2 * (cpxAbsf(*(noiseFunction + j)) + cpxAbsf(*(noiseFunction + j - 1))) / 2.);
+                newContinuity = calculatePhaseContinuity(cpxArgf(*(harmFunction + j)), *(phases + j));
             }
-            *(continuity + j) = 0.8 * *(continuity + j) + 0.2 * *(noiseCompensation + j);
-            *(sample.specharm + i * config.frameSize + j) = fmax(cpxAbsf(*(harmFunction + j)) - *(continuity + j) - *(noiseCompensation + j), 0.);
-            //*(sample.specharm + i * config.frameSize + j) = *(noiseCompensation + j);
-            //if (i > 0)
-            //{
-            //    *(sample.specharm + (i - 1) * config.frameSize + j) *= *(continuity + j);
-            //}
+            else
+            {
+                newContinuity = 1.;
+            }
+            *(sample.specharm + i * config.frameSize + j) = fmax(cpxAbsf(*(harmFunction + j)) * *(continuity + j) * newContinuity - *(noiseCompensation + j), 0.);
             *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
-            //*(phases + j) = cpxArgf(*(harmFunction + j));
+            *(phases + j) = cpxArgf(*(harmFunction + j));
+            *(continuity + j) = newContinuity;
         }
         for (int j = 0; j < windowLength; j++)
         {
@@ -851,31 +855,31 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
                 if (windowOffset + j < 0)
                 {
                     float extrapolatedPoint = *evaluationPoints + (windowOffset + j) * (*(evaluationPoints + 1) - *evaluationPoints);
-                    *(unvoicedSignalPart + j) += cpxAbsf(*(harmFunction + k)) * cos(cpxArgf(*(harmFunction + k)) + 2. * pi * k * extrapolatedPoint);
+                    *(unvoicedSignalPart + j) += *(sample.specharm + i * config.frameSize + k) * cos(*(sample.specharm + i * config.frameSize + config.halfHarmonics + k) + 2. * pi * k * extrapolatedPoint);
                 }
                 else if (windowOffset + j >= offsetWindowLength)
                 {
                     float extrapolatedPoint = *(evaluationPoints + offsetWindowLength - 1) + (windowOffset + j - offsetWindowLength + 1) * (*(evaluationPoints + offsetWindowLength - 1) - *(evaluationPoints + offsetWindowLength - 2));
-                    *(unvoicedSignalPart + j) += cpxAbsf(*(harmFunction + k)) * cos(cpxArgf(*(harmFunction + k)) + 2. * pi * k * extrapolatedPoint);
+                    *(unvoicedSignalPart + j) += *(sample.specharm + i * config.frameSize + k) * cos(*(sample.specharm + i * config.frameSize + config.halfHarmonics + k) + 2. * pi * k * extrapolatedPoint);
                 }
                 else
                 {
-                    *(unvoicedSignalPart + j) += cpxAbsf(*(harmFunction + k)) * cos(cpxArgf(*(harmFunction + k)) + 2. * pi * k * *(evaluationPoints + windowOffset + j));
+                    *(unvoicedSignalPart + j) += *(sample.specharm + i * config.frameSize + k) * cos(*(sample.specharm + i * config.frameSize + config.halfHarmonics + k) + 2. * pi * k * *(evaluationPoints + windowOffset + j));
                 }
             }
             *(unvoicedSignalPart + j) = *(unvoicedSignalPart + j)  - *(window + j);
         }
         free(harmFunction);
         free(noiseFunction);
-        free(noiseCompensation);
         for (int j = 0; j < windowLength; j++)
         {
             *(unvoicedSignal + i * config.batchSize + j) += *(hannWindow + j) * *(unvoicedSignalPart + j);
         }
         free(unvoicedSignalPart);
     }
-    //free(phases);
+    free(phases);
     free(continuity);
+    free(noiseCompensation);
     if (sample.config.isVoiced == 0)
     {
         stft_inpl(sample.waveform, sample.config.length, config, sample.excitation);
