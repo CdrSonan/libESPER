@@ -7,6 +7,9 @@ add_library(esper SHARED
     src/ESPER/esper.c
     src/ESPER/pitchCalcFallback.c
     src/ESPER/components.c
+    src/Resampler/resampler.c
+    src/Resampler/loop.c
+    src/Renderer/renderer.c
     src/fft.c
     src/interpolation.c
     src/util.c)
@@ -20,22 +23,13 @@ else()
     target_include_directories(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw")
 endif(WIN32)
 
-add_library(resampler SHARED
-    src/Resampler/resampler.c
-    src/Resampler/loop.c
-    src/interpolation.c
-    src/util.c)
-target_include_directories(resampler PRIVATE "${PROJECT_SOURCE_DIR}/")
-target_compile_definitions(resampler PRIVATE LIBESPER_BUILD)
-set_property(TARGET resampler PROPERTY C_STANDARD 11)
-set_property(TARGET resampler PROPERTY C_VISIBILITY_PRESET hidden)
-
 add_executable(test_esper
     src/ESPER/esper.c
     src/ESPER/pitchCalcFallback.c
     src/ESPER/components.c
     src/Resampler/resampler.c
     src/Resampler/loop.c
+    src/Renderer/renderer.c
     src/fft.c
     src/interpolation.c
     src/util.c
@@ -45,7 +39,7 @@ target_compile_definitions(test_esper PRIVATE LIBESPER_BUILD)
 set_property(TARGET test_esper PROPERTY C_STANDARD 11)
 add_test(NAME test_esper COMMAND test_esper WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/")
 
-set_target_properties(esper resampler test_esper PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/build")
+set_target_properties(esper test_esper PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/build")
 
 if (WIN32)
     target_link_libraries(test_esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw_win/libfftw3f-3.lib")

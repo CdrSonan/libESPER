@@ -213,3 +213,41 @@ float* istft_hann(fftwf_complex* input, int batches, int targetLength, engineCfg
     free(mainBuffer);
     return output;
 }
+
+void istft_hann_inpl(fftwf_complex* input, int batches, int targetLength, engineCfg config, float* output)
+{
+    // fft setup
+    // extended input buffer aligned with batch size
+    float* mainBuffer = (float*)malloc(config.batchSize * (batches + 3) * sizeof(float));
+#pragma omp parallel for
+    for (int i = 0; i < config.batchSize * (batches + 3); i++)
+    {
+        *(mainBuffer + i) = 0.;
+    }
+    // smaller buffer for individual fft result
+    float* buffer = (float*)malloc(config.tripleBatchSize * sizeof(float));
+    for (int i = 0; i < batches; i++)
+    {
+        // perform ffts
+        fftwf_plan plan = fftwf_plan_dft_c2r_1d(config.tripleBatchSize, input + i * (config.halfTripleBatchSize + 1), buffer, FFTW_ESTIMATE);
+        fftwf_execute(plan);
+        fftwf_destroy_plan(plan);
+        for (int j = 0; j < config.tripleBatchSize; j++)
+        {
+            // fill result into main buffer with overlap
+            *(mainBuffer + i * config.batchSize + j) += *(buffer + j) * pow(sin(pi * j / config.tripleBatchSize), 2);
+        }
+    }
+    free(buffer);
+#pragma omp parallel for
+    for (int i = 0; i < targetLength; i++)
+    {
+        *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) * (8. / 9.) / config.tripleBatchSize;
+    }
+    for (int i = 0; i < config.batchSize / 2; i++) {
+        *(output + i) /= 1. - pow(sin(pi * (i + 2.5 * config.batchSize) / config.tripleBatchSize), 2) / 5.;
+        *(output + targetLength - 1 - i) /= 1. - pow(sin(pi * (i + 2.5 * config.batchSize) / config.tripleBatchSize), 2) / 5.;
+    }
+    //!!!!!!!!!!The number 5 is arbitrary. This procedure comes close to the first-window correction of the PyTorch STFT, but is still slightly wrong.!!!!!!!!!!
+    free(mainBuffer);
+}

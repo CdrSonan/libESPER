@@ -1,4 +1,4 @@
-//Copyright 2023 - 2024 Johannes Klatt
+//Copyright 2023 Johannes Klatt
 
 //This file is part of libESPER.
 //libESPER is free software: you can redistribute it and /or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.
@@ -7,10 +7,6 @@
 
 #pragma once
 
-float* interp(float* x, float* y, float* xs, int len, int lenxs);
+#include "src/util.h"
 
-float* extrap(float* x, float* y, float* xs, int len, int lenxs);
-
-float* circInterp(float* x, float* y, float* xs, int len, int lenxs);
-
-void phaseInterp_inplace(float* phasesA, float* phasesB, int len, float factor);
+LIBESPER_EXPORT void LIBESPER_CDECL render(float* specharm, float* excitation, float* pitch, float* target, int length, engineCfg config);

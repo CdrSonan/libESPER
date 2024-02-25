@@ -1,4 +1,4 @@
-//Copyright 2023 Johannes Klatt
+//Copyright 2023 - 2024 Johannes Klatt
 
 //This file is part of libESPER.
 //libESPER is free software: you can redistribute it and /or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.
@@ -180,6 +180,52 @@ float* extrap(float* x, float* y, float* xs, int len, int lenxs)
     {
         free(xnew);
         free(ynew);
+    }
+    return ys;
+}
+
+float* circInterp(float* x, float* y, float* xs, int len, int lenxs)
+{
+    int idx = 0;
+    int idxs = 0;
+    float* ys = (float*)malloc(lenxs * sizeof(float));
+    float factor;
+    float a;
+    float b;
+    while (idxs < lenxs)
+    {
+        while (*(xs + idxs) > *(x + idx + 1) && idx < len - 2)
+        {
+            idx++;
+        }
+        factor = (*(xs + idxs) - *(x + idx)) / (*(x + idx + 1) - *(x + idx));
+        if (*(x + idx + 1) > *(x + idx))
+        {
+            a = *(x + idx + 1) - *(x + idx);
+            b = *(x + idx) - *(x + idx + 1) - 2. * pi;
+        }
+        else
+        {
+            a = *(x + idx) - *(x + idx + 1);
+            b = *(x + idx + 1) - *(x + idx) - 2. * pi;
+        }
+        if (a <= b)
+        {
+            *(ys + idxs) = *(x + idx) + factor * a;
+        }
+        else
+        {
+            *(ys + idxs) = *(x + idx) - factor * b;
+        }
+        if (*(ys + idxs) > 2. * pi)
+        {
+            *(ys + idxs) -= 2. * pi;
+        }
+        else if (*(ys + idxs) < 0.)
+        {
+            *(ys + idxs) += 2. * pi;
+        }
+        idxs++;
     }
     return ys;
 }
