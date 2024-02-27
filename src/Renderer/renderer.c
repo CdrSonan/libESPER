@@ -25,12 +25,6 @@ void LIBESPER_CDECL render(float* specharm, float* excitation, float* pitch, flo
 	}
 	istft_hann_inpl(cpxExcitation, length, length * config.batchSize, config, target);
 	free(cpxExcitation);
-	float* pitchOffsets = (float*)malloc(length * config.batchSize * sizeof(float));
-	*pitchOffsets = 0.;
-	for (int i = 0; i < length * config.batchSize - 1; i++)
-	{
-		*(pitchOffsets + i + 1) = *(pitchOffsets + i) + 1. / *(pitch + i);
-	}
 	float* frameSpace = (float*)malloc(length * sizeof(float));
 	for (int i = 0; i < length; i++)
 	{
@@ -41,6 +35,14 @@ void LIBESPER_CDECL render(float* specharm, float* excitation, float* pitch, flo
 	{
 		*(waveSpace + i) = i / config.batchSize;
 	}
+	float* wavePitch = interp(frameSpace, pitch, waveSpace, length, length * config.batchSize);
+	float* pitchOffsets = (float*)malloc(length * config.batchSize * sizeof(float));
+	*pitchOffsets = 0.;
+	for (int i = 0; i < length * config.batchSize - 1; i++)
+	{
+		*(pitchOffsets + i + 1) = *(pitchOffsets + i) + 1. / *(wavePitch + i);
+	}
+	free(wavePitch);
 	for (int i = 0; i < config.halfHarmonics; i++)
 	{
 		float* harmAbs = (float*)malloc(length * sizeof(float));
@@ -56,7 +58,8 @@ void LIBESPER_CDECL render(float* specharm, float* excitation, float* pitch, flo
 		free(harmArg);
 		for (int j = 0; j < length * config.batchSize - 1; j++)
 		{
-			*(target + j) += cos(*(interpArg + j) + *(pitchOffsets + j) * 2. * pi * i) * *(interpAbs + j);
+			//*(target + j) += cos(*(interpArg + j) + *(pitchOffsets + j) * 2. * pi * i) * *(interpAbs + j);
+			*(target + j) += cos(*(pitchOffsets + j) * 2. * pi * i) * *(interpAbs + j);
 		}
 	}
 	free(pitchOffsets);
