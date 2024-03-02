@@ -194,28 +194,28 @@ float* circInterp(float* x, float* y, float* xs, int len, int lenxs)
     float b;
     while (idxs < lenxs)
     {
-        while (*(xs + idxs) > *(x + idx + 1) && idx < len - 2)
+        while (*(xs + idxs) > *(x + idx + 1) && idx < len - 1)
         {
             idx++;
         }
         factor = (*(xs + idxs) - *(x + idx)) / (*(x + idx + 1) - *(x + idx));
-        if (*(x + idx + 1) > *(x + idx))
+        if (*(y + idx + 1) > *(y + idx))
         {
-            a = *(x + idx + 1) - *(x + idx);
-            b = *(x + idx) - *(x + idx + 1) - 2. * pi;
+            a = *(y + idx + 1) - *(y + idx);
+            b = *(y + idx) - *(y + idx + 1) + 2. * pi;
         }
         else
         {
-            a = *(x + idx) - *(x + idx + 1);
-            b = *(x + idx + 1) - *(x + idx) - 2. * pi;
+            a = *(y + idx) - *(y + idx + 1);
+            b = *(y + idx + 1) - *(y + idx) + 2. * pi;
         }
         if (a <= b)
         {
-            *(ys + idxs) = *(x + idx) + factor * a;
+            *(ys + idxs) = *(y + idx) + factor * a;
         }
         else
         {
-            *(ys + idxs) = *(x + idx) - factor * b;
+            *(ys + idxs) = *(y + idx) - factor * b;
         }
         if (*(ys + idxs) > 2. * pi)
         {

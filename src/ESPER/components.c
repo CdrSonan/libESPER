@@ -843,7 +843,14 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
                 newContinuity = 1.;
             }
             *(sample.specharm + i * config.frameSize + j) = fmax(cpxAbsf(*(harmFunction + j)) * *(continuity + j) * newContinuity - *(noiseCompensation + j), 0.);
-            *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
+            if (j > 0)
+            {
+                *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
+            }
+            else
+            {
+                *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = 0.;
+            }
             *(phases + j) = cpxArgf(*(harmFunction + j));
             *(continuity + j) = newContinuity;
         }
