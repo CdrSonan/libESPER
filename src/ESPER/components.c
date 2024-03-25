@@ -538,6 +538,8 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
                 transition = tmpTransition;
                 error = newError;
             }
+            free(sample);
+            free(shiftedSample);
         }
         dynIntArray_append(&upTransitionMarkers, transition);
 
@@ -606,6 +608,8 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
                 transition = tmpTransition;
                 error = newError;
             }
+            free(sample);
+            free(shiftedSample);
         }
         dynIntArray_append(&downTransitionMarkers, transition);
         dynIntArray_dealloc(&validTransitions);
@@ -876,6 +880,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
             }
             *(unvoicedSignalPart + j) = *(unvoicedSignalPart + j)  - *(window + j);
         }
+        free(evaluationPoints);
         free(harmFunction);
         free(noiseFunction);
         for (int j = 0; j < windowLength; j++)
@@ -887,6 +892,8 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     free(phases);
     free(continuity);
     free(noiseCompensation);
+    free(markers.markers);
+    free(hannWindow);
     if (sample.config.isVoiced == 0)
     {
         stft_inpl(sample.waveform, sample.config.length, config, sample.excitation);
@@ -896,6 +903,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         stft_inpl(unvoicedSignal + padLength, sample.config.length, config, sample.excitation);
     }
     free(unvoicedSignal);
+    free(wave);
 }
 
 //averages all harmonic amplitudes and spectra, stores the result in the avgSpecharm field of the sample, and overwrites the specharms with their difference from the average.
@@ -936,7 +944,7 @@ void averageSpectra(cSample sample, engineCfg config)
         }
     }
     //dampen outliers if required
-    if (0)//(sample.config.useVariance > 0)
+    if (sample.config.useVariance > 0)
     {
         float variance = 0.;
         float* variances = (float*)malloc(sample.config.batches * sizeof(float));
@@ -970,6 +978,7 @@ void averageSpectra(cSample sample, engineCfg config)
                 }
             }
         }
+        free(variances);
     }
     for (int i = 0; i < sample.config.batches; i++)
     {

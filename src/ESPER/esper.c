@@ -28,6 +28,7 @@ void LIBESPER_CDECL specCalc(cSample sample, engineCfg config)
     free(buffer);
     float* lowSpectra = lowRangeSmooth(sample, signalsAbs, config);
     float* highSpectra = highRangeSmooth(sample, signalsAbs, config);
+    free(signalsAbs);
     finalizeSpectra(sample, lowSpectra, highSpectra, config);
     free(lowSpectra);
     free(highSpectra);
