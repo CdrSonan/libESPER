@@ -242,7 +242,7 @@ void istft_hann_inpl(fftwf_complex* input, int batches, int targetLength, engine
 #pragma omp parallel for
     for (int i = 0; i < targetLength; i++)
     {
-        *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) * (8. / 9.);// / config.tripleBatchSize;
+        *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) / 3.;// / config.tripleBatchSize;
     }
     for (int i = 0; i < config.batchSize / 2; i++) {
         *(output + i) /= 1. - pow(sin(pi * (i + 2.5 * config.batchSize) / config.tripleBatchSize), 2) / 5.;
