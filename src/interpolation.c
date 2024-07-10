@@ -200,29 +200,28 @@ float* circInterp(float* x, float* y, float* xs, int len, int lenxs)
             idx++;
         }
         factor = (*(xs + idxs) - *(x + idx)) / (*(x + idx + 1) - *(x + idx));
+        a = *(y + idx + 1) - *(y + idx);
         if (*(y + idx + 1) > *(y + idx))
         {
-            a = *(y + idx + 1) - *(y + idx);
-            b = *(y + idx) - *(y + idx + 1) + 2. * pi;
+            b = a - 2. * pi;
         }
         else
         {
-            a = *(y + idx) - *(y + idx + 1);
-            b = *(y + idx + 1) - *(y + idx) + 2. * pi;
+            b = a + 2. * pi;
         }
-        if (a <= b)
+        if (fabsf(a) <= fabsf(b))
         {
-            *(ys + idxs) = *(y + idx) + factor * a;
+            *(ys + idxs) = fmodf(*(y + idx) + factor * a, 2 * pi);
         }
         else
         {
-            *(ys + idxs) = *(y + idx) - factor * b;
+            *(ys + idxs) = fmodf(*(y + idx) + factor * b, 2 * pi);
         }
-        if (*(ys + idxs) > 2. * pi)
+        if (*(ys + idxs) > pi)
         {
             *(ys + idxs) -= 2. * pi;
         }
-        else if (*(ys + idxs) < 0.)
+        else if (*(ys + idxs) <= -pi)
         {
             *(ys + idxs) += 2. * pi;
         }
@@ -236,23 +235,36 @@ float* circInterp(float* x, float* y, float* xs, int len, int lenxs)
 //The result is written back into phasesA.
 void phaseInterp_inplace(float* phasesA, float* phasesB, int len, float factor)
 {
-    float* bufferA = (float*)malloc(len * sizeof(float));
-    float* bufferB = (float*)malloc(len * sizeof(float));
+    float a;
+    float b;
     for (int i = 0; i < len; i++)
     {
         //calculate both possible angles
-        *(bufferA + i) = *(phasesB + i) - *(phasesA + i);
-        *(bufferB + i) = *(bufferA + i) - (2 * pi);
-        //apply transition using smaller angle
-        if (fabsf(*(bufferA + i)) >= fabsf(*(bufferB + i)))
+        a = *(phasesB + i) - *(phasesA + i);
+        if (*(phasesB + i) > *(phasesA + i))
         {
-            *(phasesA + i) = fmodf(*(phasesA + i) + *(bufferA + i) * factor, 2 * pi);
+            b = a - (2 * pi);
         }
         else
         {
-            *(phasesA + i) = fmodf(*(phasesA + i) + *(bufferB + i) * factor, 2 * pi);
+            b = a + (2 * pi);
+        }
+        //apply transition using smaller angle
+        if (fabsf(a) <= fabsf(b))
+        {
+            *(phasesA + i) = fmodf(*(phasesA + i) + a * factor, 2 * pi);
+        }
+        else
+        {
+            *(phasesA + i) = fmodf(*(phasesA + i) + b * factor, 2 * pi);
+        }
+        if (*(phasesA + i) > pi)
+        {
+            *(phasesA + i) -= 2 * pi;
+        }
+        else if (*(phasesA + i) <= -pi)
+        {
+            *(phasesA + i) += 2 * pi;
         }
     }
-    free(bufferA);
-    free(bufferB);
 }
