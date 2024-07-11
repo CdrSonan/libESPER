@@ -12,24 +12,29 @@
         #define LIBESPER_EXPORT __declspec(dllexport)
         #define LIBESPER_CDECL __cdecl
         #define LIBESPER_FFTW_INCLUDE_PATH "fftw_win/fftw3.h"
+        #define LIBESPER_NFFT_INCLUDE_PATH "nfft_win/nfft3.h"
     #elif __GNUC__ >= 4
         #define LIBESPER_EXPORT __attribute__((visibility("default")))
         #define LIBESPER_CDECL __attribute__((__cdecl__))
         #define LIBESPER_FFTW_INCLUDE_PATH "fftw/api/fftw3.h"
+        #define LIBESPER_NFFT_INCLUDE_PATH "nfft_win/api/nfft3.h"
     #else
         #define LIBESPER_EXPORT
         #define LIBESPER_CDECL
         #define LIBESPER_FFTW_INCLUDE_PATH "fftw/api/fftw3.h"
+        #define LIBESPER_NFFT_INCLUDE_PATH "nfft_win/api/nfft3.h"
     #endif
 #else
     #ifdef _WIN32
         #define LIBESPER_EXPORT __declspec(dllimport)
         #define LIBESPER_CDECL __cdecl
         #define LIBESPER_FFTW_INCLUDE_PATH "fftw_win/fftw3.h"
+        #define LIBESPER_NFFT_INCLUDE_PATH "nfft_win/nfft3.h"
     #else
         #define LIBESPER_EXPORT
         #define LIBESPER_CDECL
         #define LIBESPER_FFTW_INCLUDE_PATH "fftw/api/fftw3.h"
+        #define LIBESPER_NFFT_INCLUDE_PATH "nfft_win/api/nfft3.h"
     #endif
 #endif
 

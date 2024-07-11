@@ -14,6 +14,7 @@
 #include "src/fft.h"
 #include "src/interpolation.h"
 #include LIBESPER_FFTW_INCLUDE_PATH
+#include LIBESPER_NFFT_INCLUDE_PATH
 
 //spectral smoothing/envelope calculation function based on the True Envelope Estimator algorithm.
 //produces diverging oscillations in the high frequency range for typical vocal spectra.
