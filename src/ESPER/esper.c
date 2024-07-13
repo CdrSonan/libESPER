@@ -33,5 +33,5 @@ void LIBESPER_CDECL specCalc(cSample sample, engineCfg config)
     free(lowSpectra);
     free(highSpectra);
     separateVoicedUnvoiced(sample, config);
-    averageSpectra(sample, config);
+    finalizeSample(sample, config);
 }

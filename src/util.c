@@ -99,5 +99,14 @@ float cpxArgf(fftwf_complex input)
     return atan2f(input[1], input[0]);
 }
 
+float* hannWindow(int length, float multiplier)
+{
+    float* hannWindow = (float*)malloc(length * sizeof(float));
+    for (int i = 0; i < length; i++) {
+        *(hannWindow + i) = pow(sin((pi / length) * i), 2.) * multiplier * 2. / 3.;
+    }
+    return hannWindow;
+}
+
 //the number pi
 float pi = 3.1415926535897932384626433;

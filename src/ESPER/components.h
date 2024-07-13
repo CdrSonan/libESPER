@@ -17,4 +17,4 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
 
 void separateVoicedUnvoiced(cSample sample, engineCfg config);
 
-void averageSpectra(cSample sample, engineCfg config);
+void finalizeSample(cSample sample, engineCfg config);

@@ -136,4 +136,6 @@ float cpxAbsf(fftwf_complex input);
 
 float cpxArgf(fftwf_complex input);
 
+float* hannWindow(int length, float multiplier);
+
 float pi;
