@@ -589,19 +589,14 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
     return markers;
 }
 
-float calculatePhaseContinuity(float phaseA, float phaseB)
+typedef struct
 {
-    float phaseDiff = fmin(phaseB - phaseA, phaseA - phaseB);
-    return cos(phaseDiff / 2.);
-}
+    float* evaluationPoints;
+    float* offsetWindow;
+    int size;
+} evaluationPointsStruct;
 
-
-
-
-
-
-
-void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength, float* unvoicedSignal, float* hannWindowInst, PitchMarkerStruct markers, cSample sample, engineCfg config)
+void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength, float* hannWindowInst, evaluationPointsStruct* eval, fftw_complex* result, PitchMarkerStruct markers, cSample sample, engineCfg config)
 {
     float* window = wave + index * config.batchSize;
     //get fitting segment of marker array
@@ -617,27 +612,14 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
     }
     float* offsetWindow = wave + (int)*(markers.markers + localMarkerStart);
     int offsetWindowLength = (int)*(markers.markers + localMarkerEnd) - (int)ceil(*(markers.markers + localMarkerStart)) + 1;
+    fftw_complex* cpxOffsetWindow = (fftw_complex*)malloc(offsetWindowLength * sizeof(fftw_complex));
+    for (int i = 0; i < offsetWindowLength; i++)
+    {
+        (*(cpxOffsetWindow + i))[0] = *(offsetWindow + i);
+        (*(cpxOffsetWindow + i))[1] = 0.;
+    }
     int windowOffset = index * config.batchSize - (int)ceil(*(markers.markers + localMarkerStart));
     int markerLength = localMarkerEnd - localMarkerStart + 1;
-    //int noiseWindowLength;
-    //int noiseMarkerLength;
-    //int noiseMarkerEnd;
-    //if (markerLength % 2 == 1)
-    //{
-    //    noiseWindowLength = offsetWindowLength;
-    //    noiseMarkerLength = markerLength;
-    //    noiseMarkerEnd = localMarkerEnd;
-    //}
-    //else
-    //{
-    //    noiseWindowLength = (int)*(markers.markers + localMarkerEnd - 1) - (int)ceil(*(markers.markers + localMarkerStart)) + 1;
-    //    noiseMarkerLength = markerLength - 1;
-    //    noiseMarkerEnd = localMarkerEnd - 1;
-    //}
-    //fftwf_complex* harmFunction = (fftwf_complex*)malloc(config.halfHarmonics * sizeof(fftwf_complex));
-    //fftwf_complex* noiseFunction = (fftwf_complex*)malloc(config.halfHarmonics * sizeof(fftwf_complex));
-    //float newContinuity;
-    //float* unvoicedSignalPart = (float*)malloc(windowLength * sizeof(float));
     float* evaluationPoints;
     //check if there are sufficient markers to perform pitch-synchronous analysis
     if (markerLength <= 2)
@@ -670,130 +652,124 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
         free(markerSpace);
         free(windowSpace);
     }
-    float multiplier;
-    for (int j = 0; j < config.halfHarmonics; j++)
+
+    nfft_plan combinedNUFFT;
+    nfft_init_1d(&combinedNUFFT, config.nHarmonics + 2, offsetWindowLength);
+    for (int i = 0; i < offsetWindowLength; i++)
     {
-        (*(harmFunction + j))[0] = 0.;
-        (*(harmFunction + j))[1] = 0.;
-        for (int k = 0; k < offsetWindowLength; k++)
+        combinedNUFFT.x[i] = fmodf(2.f * *(evaluationPoints + i), 1.f);
+        if (combinedNUFFT.x[i] > 0.5)
         {
-            if (k == 0)
-            {
-                multiplier = (*(evaluationPoints + 1) - *(evaluationPoints)) / (markerLength - 1);
-                if (ceil(*(markers.markers + localMarkerStart)) != *(markers.markers + localMarkerStart))
-                {
-                    multiplier += *(evaluationPoints) / (markerLength - 1) * 2.;
-                }
-            }
-            else if (k == offsetWindowLength - 1)
-            {
-                multiplier = (*(evaluationPoints + offsetWindowLength - 1) - *(evaluationPoints + offsetWindowLength - 2)) / (markerLength - 1);
-                if (floor(*(markers.markers + localMarkerEnd)) != *(markers.markers + localMarkerEnd))
-                {
-                    multiplier += (markerLength - 1 - *(evaluationPoints + offsetWindowLength - 1)) / (markerLength - 1) * 2.;
-                }
-            }
-            else
-            {
-                multiplier = (*(evaluationPoints + k + 1) - *(evaluationPoints + k - 1)) / (markerLength - 1);
-            }
-            (*(harmFunction + j))[0] += *(offsetWindow + k) * cos(-2. * pi * j * *(evaluationPoints + k)) * multiplier;
-            (*(harmFunction + j))[1] += *(offsetWindow + k) * sin(-2. * pi * j * *(evaluationPoints + k)) * multiplier;
+            combinedNUFFT.x[i] -= 1.;
         }
-
-
-
-
-        (*(noiseFunction + j))[0] = 0.;
-        (*(noiseFunction + j))[1] = 0.;
-        for (int k = 0; k < noiseWindowLength; k++)
-        {
-            if (k == 0)
-            {
-                multiplier = (*(evaluationPoints + 1) - *(evaluationPoints)) / (noiseMarkerLength - 1);
-                if (ceil(*(markers.markers + localMarkerStart)) != *(markers.markers + localMarkerStart))
-                {
-                    multiplier += *(evaluationPoints) / (noiseMarkerLength - 1) * 2.;
-                }
-            }
-            else if (k == noiseWindowLength - 1)
-            {
-                multiplier = (*(evaluationPoints + noiseWindowLength - 1) - *(evaluationPoints + noiseWindowLength - 2)) / (noiseMarkerLength - 1);
-                if (floor(*(markers.markers + noiseMarkerEnd)) != *(markers.markers + noiseMarkerEnd))
-                {
-                    multiplier += (noiseMarkerLength - 1 - *(evaluationPoints + noiseWindowLength - 1)) / (noiseMarkerLength - 1) * 2.;
-                }
-            }
-            else
-            {
-                multiplier = (*(evaluationPoints + k + 1) - *(evaluationPoints + k - 1)) / (noiseMarkerLength - 1);
-            }
-            (*(noiseFunction + j))[0] += *(offsetWindow + k) * cos(-2. * pi * ((float)j + 0.5) * *(evaluationPoints + k)) * multiplier;
-            (*(noiseFunction + j))[1] += *(offsetWindow + k) * sin(-2. * pi * ((float)j + 0.5) * *(evaluationPoints + k)) * multiplier;
-        }
-
-
-
-
-
-
-
-
-
-
-
-
-        if (j > 2)
-        {
-            *(noiseCompensation + j) = fmax((cpxAbsf(*(noiseFunction + j)) + cpxAbsf(*(noiseFunction + j - 1))) / 2., 0.8 * *(noiseCompensation + j) + 0.2 * (cpxAbsf(*(noiseFunction + j)) + cpxAbsf(*(noiseFunction + j - 1))) / 2.);
-            newContinuity = calculatePhaseContinuity(cpxArgf(*(harmFunction + j)), *(phases + j));
-        }
-        else
-        {
-            newContinuity = 1.;
-        }
-        *(sample.specharm + index * config.frameSize + j) = fmax(cpxAbsf(*(harmFunction + j)) * *(continuity + j) * newContinuity - *(noiseCompensation + j), 0.);
-        if (j > 0)
-        {
-            *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
-        }
-        else
-        {
-            *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = 0.;
-        }
-        *(phases + j) = cpxArgf(*(harmFunction + j));
-        *(continuity + j) = newContinuity;
     }
-    for (int j = 0; j < windowLength; j++)
+    if (combinedNUFFT.flags & PRE_ONE_PSI)
     {
-        *(unvoicedSignalPart + j) = 0.;
-        for (int k = 0; k < config.halfHarmonics; k++)
+        nfft_precompute_one_psi(&combinedNUFFT);
+    }
+    combinedNUFFT.f = cpxOffsetWindow;
+    combinedNUFFT.f_hat = result + index * (config.nHarmonics + 2);
+    nfft_trafo_1d(&combinedNUFFT);
+    nfft_finalize(&combinedNUFFT);
+    free(cpxOffsetWindow);
+    eval->evaluationPoints = evaluationPoints;
+    eval->offsetWindow = offsetWindow;
+    eval->size = offsetWindowLength;
+}
+
+float calculatePhaseContinuity(float phaseA, float phaseB)
+{
+    float phaseDiff = fmin(phaseB - phaseA, phaseA - phaseB);
+    return cos(phaseDiff / 2.);
+}
+
+void separateVoicedUnvoicedPostProc(evaluationPointsStruct* evals, fftw_complex* result, float* unvoicedSignal, cSample sample, engineCfg config)
+{
+    for (int i = 0; i < sample.config.batches; i++)
+    {
+        for (int j = 0; j < config.halfHarmonics; j++)
+            //2j+1-th component contains unvoiced part of 2j-th component
+            //> 2j+1-th component calculated as mean(2j-1, 2j+1) + 2ndDerr as (2*2j - 2j-2 - 2j+2)/2
+            //> 2j+1 = (2j-1 + 2j+1 - 2j-2/2 - 2j+2/2 + 2j)/2
+            //store original abs in imaginary part
         {
-            if (windowOffset + j < 0)
+            *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[1] = cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j + 1));
+        }
+        *(result + i * (config.nHarmonics + 2) + 1)[0] =
+            (
+                *(result + i * (config.nHarmonics + 2) + 1)[1] -
+                cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2)) / 2. +
+                cpxAbsf(*(result + i * (config.nHarmonics + 2))) / 2.
+            );
+        for (int j = 1; j < config.halfHarmonics - 1; j++)
+        {
+            *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[0] =
+                (
+                    *(result + i * (config.nHarmonics + 2) + 2 * j - 1)[1] +
+                    *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[1] -
+                    cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j - 2)) / 2. -
+                    cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j + 2)) / 2. +
+                    cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j))
+                ) / 2.;
+        }
+        int j = config.halfHarmonics - 1;
+        *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[0] =
+            (
+                *(result + i * (config.nHarmonics + 2) + 2 * j - 1)[1] -
+                cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j - 2)) / 2. +
+                cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j)) / 2.
+            );
+    }
+    for (int i = 0; i < config.halfHarmonics; i++)
+    {
+        *(result + 2 * i + 1)[1] =
+            (
+                *(result + 2 * i + 1)[0] * 2. +
+                *(result + (config.nHarmonics + 2) + 2 * i + 1)[0]
+            ) / 3.;
+        for (int j = 1; j < sample.config.batches - 1; j++)
+        {
+            *(result + j * (config.nHarmonics + 2) + 2 * i + 1)[1] =
+                (
+                    *(result + j * (config.nHarmonics + 2) + 2 * i + 1)[0] * 2. +
+                    *(result + (j - 1) * (config.nHarmonics + 2) + 2 * i + 1)[0] +
+                    *(result + (j + 1) * (config.nHarmonics + 2) + 2 * i + 1)[0]
+                ) / 4.;
+
+        }
+        *(result + (sample.config.batches - 1) * (config.nHarmonics + 2) + 2 * i + 1)[1] =
+            (
+                *(result + (sample.config.batches - 1) * (config.nHarmonics + 2) + 2 * i + 1)[0] * 2. +
+                *(result + (sample.config.batches - 2) * (config.nHarmonics + 2) + 2 * i + 1)[0]
+            ) / 3.;
+    }
+    for (int i = 0; i < sample.config.batches; i++)
+    {
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+            *(sample.specharm + i * config.frameSize + j) = fminf(cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j)) - fmaxf(*(result + i * (config.nHarmonics + 2) + 2 * j)[0], *(result + i * (config.nHarmonics + 2) + 2 * j)[1]), 0.);
+            *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(result + i * (config.nHarmonics + 2) + 2 * j));
+        }
+        nfft_plan inverseNUFFT;
+        nfft_init_1d(&inverseNUFFT, config.halfHarmonics, (*(evals + i)).size);
+        for (int i = 0; i < (*(evals + i)).size; i++)
+        {
+            inverseNUFFT.x[i] = fmodf(*((*(evals + i)).evaluationPoints + i), 1.f);
+            if (inverseNUFFT.x[i] > 0.5)
             {
-                float extrapolatedPoint = *evaluationPoints + (windowOffset + j) * (*(evaluationPoints + 1) - *evaluationPoints);
-                *(unvoicedSignalPart + j) += *(sample.specharm + index * config.frameSize + k) * cos(*(sample.specharm + index * config.frameSize + config.halfHarmonics + k) + 2. * pi * k * extrapolatedPoint);
-            }
-            else if (windowOffset + j >= offsetWindowLength)
-            {
-                float extrapolatedPoint = *(evaluationPoints + offsetWindowLength - 1) + (windowOffset + j - offsetWindowLength + 1) * (*(evaluationPoints + offsetWindowLength - 1) - *(evaluationPoints + offsetWindowLength - 2));
-                *(unvoicedSignalPart + j) += *(sample.specharm + index * config.frameSize + k) * cos(*(sample.specharm + index * config.frameSize + config.halfHarmonics + k) + 2. * pi * k * extrapolatedPoint);
-            }
-            else
-            {
-                *(unvoicedSignalPart + j) += *(sample.specharm + index * config.frameSize + k) * cos(*(sample.specharm + index * config.frameSize + config.halfHarmonics + k) + 2. * pi * k * *(evaluationPoints + windowOffset + j));
+                inverseNUFFT.x[i] -= 1.;
             }
         }
-        *(unvoicedSignalPart + j) = *(unvoicedSignalPart + j) - *(window + j);
+        if (inverseNUFFT.flags & PRE_ONE_PSI)
+        {
+            nfft_precompute_one_psi(&inverseNUFFT);
+        }
+        inverseNUFFT.f = cpxOffsetWindow;
+        inverseNUFFT.f_hat = result + i * (config.nHarmonics + 2);//adjust
+        nfft_adjoint_1d(&inverseNUFFT);
+        nfft_finalize(&inverseNUFFT);
+        *(unvoicedSignal + i * config.halfTripleBatchSize) = 0.;
     }
-    free(evaluationPoints);
-    free(harmFunction);
-    free(noiseFunction);
-    for (int j = 0; j < windowLength; j++)
-    {
-        *(unvoicedSignal + index * config.batchSize + j) += *(hannWindowInst + j) * *(unvoicedSignalPart + j);
-    }
-    free(unvoicedSignalPart);
 }
 
 
@@ -832,28 +808,13 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     {
         *(unvoicedSignal + i) = 0.f;
     }
-    //further variable definitions for later use
+
     float* hannWindowInst = hannWindow(windowLength, 1. / config.filterBSMult);
-    int batches = sample.config.batches;
     //Get DIO Pitch markers
     PitchMarkerStruct markers = calculatePitchMarkers(sample, wave, waveLength, config);
-    //float* phases = (float*)malloc(config.halfHarmonics * sizeof(float));
-    //for (int i = 0; i < config.halfHarmonics; i++)
-    //{
-    //    *(phases + i) = 1.;
-    //}
-    //float* continuity = (float*)malloc(config.halfHarmonics * sizeof(float));
-    //for (int i = 0; i < config.halfHarmonics; i++)
-    //{
-    //    *(continuity + i) = 1.;
-    //}
-    //float* noiseCompensation = (float*)malloc(config.halfHarmonics * sizeof(float));
-    //for (int i = 0; i < config.halfHarmonics; i++)
-    //{
-    //    *(noiseCompensation + i) = 0.;
-    //}
-    //Loop over each window
-    for (int i = 0; i < batches; i++)
+    fftw_complex* combinedCoeffs = (fftw_complex*)malloc(sample.config.batches * (config.nHarmonics + 2) * sizeof(fftw_complex));
+    evaluationPointsStruct* evals = (evaluationPointsStruct*)malloc(sample.config.batches * sizeof(evaluationPointsStruct));
+    for (int i = 0; i < sample.config.batches; i++)
     {
         //separation calculations are only necessary if the sample is voiced
         if (sample.config.isVoiced == 0)
@@ -864,13 +825,12 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
             }
             continue;
         }
-        separateVoicedUnvoicedSingleWindow(i, wave, windowLength, unvoicedSignal, hannWindowInst, markers, sample, config);
+        separateVoicedUnvoicedSingleWindow(i, wave, windowLength, hannWindowInst, evals + i, combinedCoeffs, markers, sample, config);
     }
-    //free(phases);
-    //free(continuity);
-    //free(noiseCompensation);
     free(markers.markers);
     free(hannWindowInst);
+    separateVoicedUnvoicedPostProc(evals, combinedCoeffs, unvoicedSignal, sample, config);
+    free(combinedCoeffs);
     if (sample.config.isVoiced == 0)
     {
         stft_inpl(sample.waveform, sample.config.length, config, sample.excitation);
