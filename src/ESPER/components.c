@@ -265,28 +265,34 @@ void tempSmoothSpectra(float* sourceSpectra, float* targetSpectra, cSample sampl
             *(workingSpectra + j) = *(targetSpectra + j);
         }
     }
+    printf("end check\n");
     free(workingSpectra);
 }
 
 void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engineCfg config)
 {
     mergeSpectra(sample, lowSpectra, highSpectra, config);
-    tempSmoothSpectra(lowSpectra, highSpectra, sample, config);
+    free(highSpectra);
+    float* tgtSpectra = (float*)malloc((sample.config.batches + 2 * sample.config.tempDepth) * (config.halfTripleBatchSize + 1) * sizeof(float));
+    tempSmoothSpectra(lowSpectra, tgtSpectra, sample, config);
+    free(lowSpectra);
+    printf("post smooth\n");
     //load result into the appropriate portion of sample.specharm
     for (int i = 0; i < sample.config.batches; i++)
     {
         for (int j = 0; j < (config.halfTripleBatchSize + 1); j++)
         {
-            if (*(highSpectra + (sample.config.tempDepth + i) * (config.halfTripleBatchSize + 1) + j) < 0.001)
+            if (*(tgtSpectra + (sample.config.tempDepth + i) * (config.halfTripleBatchSize + 1) + j) < 0.001)
             {
                 *(sample.specharm + i * config.frameSize + 2 * config.halfHarmonics + j) = 0.001;
             }
             else
             {
-                *(sample.specharm + i * config.frameSize + 2 * config.halfHarmonics + j) = *(highSpectra + (sample.config.tempDepth + i) * (config.halfTripleBatchSize + 1) + j);
+                *(sample.specharm + i * config.frameSize + 2 * config.halfHarmonics + j) = *(tgtSpectra + (sample.config.tempDepth + i) * (config.halfTripleBatchSize + 1) + j);
             }
         }
     }
+    free(tgtSpectra);
 }
 
 //struct for holding the output of the pitch marker calculator.
@@ -419,24 +425,24 @@ void seedPitchMarkers(PitchMarkerStruct* markers, cSample sample, engineCfg conf
     }
 }
 
-void findNextMarker(dynIntArray primaryMarkers, dynIntArray secondaryMarkers, dynIntArray primaryTransitions, dynIntArray secondaryTransitions, float* wave, int waveLength, cSample sample, engineCfg config)
+void findNextMarker(dynIntArray* primaryMarkers, dynIntArray* secondaryMarkers, dynIntArray* primaryTransitions, dynIntArray* secondaryTransitions, float* wave, int waveLength, cSample sample, engineCfg config)
 {
     //up = primary
     //down = secondary
-    int lastPrimary = *(primaryMarkers.content + primaryMarkers.length - 1);
-    int lastSecondary = *(secondaryMarkers.content + secondaryMarkers.length - 1);
+    int lastPrimary = *(primaryMarkers->content + primaryMarkers->length - 1);
+    int lastSecondary = *(secondaryMarkers->content + secondaryMarkers->length - 1);
     int lastPitch = getLocalPitch(lastPrimary, sample, config);
     float error = -1.; //-1 denotes an "infinite" error
     float newError;
     int transition;
     //calculate next upwards marker
     //fallback "transition": if there are no actual transitions within the search range, this point will be used instead
-    if (primaryMarkers.length > 1)
+    if (primaryMarkers->length > 1)
     {
-        transition = lastPrimary + lastSecondary - *(secondaryMarkers.content + secondaryMarkers.length - 2);
+        transition = lastPrimary + lastSecondary - *(secondaryMarkers->content + secondaryMarkers->length - 2);
         if (transition <= lastSecondary)
         {
-            transition = lastSecondary + ceildiv(lastSecondary - *(secondaryMarkers.content + secondaryMarkers.length - 2), 2);
+            transition = lastSecondary + ceildiv(lastSecondary - *(secondaryMarkers->content + secondaryMarkers->length - 2), 2);
         }
     }
     else
@@ -456,7 +462,7 @@ void findNextMarker(dynIntArray primaryMarkers, dynIntArray secondaryMarkers, dy
     }
     //start of the window of possible transitions
     //check if limit is out of bounds (upper)
-    unsigned int start = findIndex(primaryTransitions.content, primaryTransitions.length, limit);
+    unsigned int start = findIndex(primaryTransitions->content, primaryTransitions->length, limit);
     unsigned int end = start;
     //end of the window of possible transitions
     limit = lastPrimary + (1 + config.DIOTolerance) * lastPitch;
@@ -467,13 +473,13 @@ void findNextMarker(dynIntArray primaryMarkers, dynIntArray secondaryMarkers, dy
     //check if limit is out of bounds (lower)
     //load all transitions within the window into validTransitions
     //TODO: replace validTransitions dynIntArray with pointer offsets on zeroTransitionsUp
-    while (end < primaryTransitions.length && *(primaryTransitions.content + end) <= limit)
+    while (end < primaryTransitions->length && *(primaryTransitions->content + end) <= limit)
     {
         end++;
     }
     for (int i = start; i < end; i++)
     {
-        int tmpTransition = *(primaryTransitions.content + i);
+        int tmpTransition = *(primaryTransitions->content + i);
         int localPitch = getLocalPitch(tmpTransition, sample, config);
         //correlate sample of one expected wavelength from current last upwards marker and candidate upwards marker
         float* sample = (float*)malloc(localPitch * sizeof(float));
@@ -512,7 +518,7 @@ void findNextMarker(dynIntArray primaryMarkers, dynIntArray secondaryMarkers, dy
         free(sample);
         free(shiftedSample);
     }
-    dynIntArray_append(&primaryMarkers, transition);
+    dynIntArray_append(primaryMarkers, transition);
 }
 
 //calculates precise pitch markers for the padded waveform of a sample.
@@ -522,6 +528,8 @@ void findNextMarker(dynIntArray primaryMarkers, dynIntArray secondaryMarkers, dy
 PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLength, engineCfg config)
 {
     PitchMarkerStruct markers;
+    markers.wave = wave;
+    markers.waveLength = waveLength;
     //get all zero transitions and load them into dynamic arrays
     dynIntArray_init(&markers.transitionsUp);
     dynIntArray_init(&markers.transitionsDown);
@@ -554,8 +562,8 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
     //loops until the entire sample is covered with markers
     while (*(markers.markersDown.content + markers.markersDown.length - 1) < markers.waveLength - (int)(*(sample.pitchDeltas + sample.config.pitchLength - 1) * config.DIOLastWinTolerance))//check for negative out-of-bounds
     {
-        findNextMarker(markers.markersUp, markers.markersDown, markers.transitionsUp, markers.transitionsDown, markers.wave, markers.waveLength, sample, config);
-        findNextMarker(markers.markersDown, markers.markersUp, markers.transitionsDown, markers.transitionsUp, markers.wave, markers.waveLength, sample, config);
+        findNextMarker(&markers.markersUp, &markers.markersDown, &markers.transitionsUp, &markers.transitionsDown, markers.wave, markers.waveLength, sample, config);
+        findNextMarker(&markers.markersDown, &markers.markersUp, &markers.transitionsDown, &markers.transitionsUp, markers.wave, markers.waveLength, sample, config);
     }
     dynIntArray_dealloc(&markers.transitionsUp);
     dynIntArray_dealloc(&markers.transitionsDown);
@@ -683,7 +691,7 @@ float calculatePhaseContinuity(float phaseA, float phaseB)
     return cos(phaseDiff / 2.);
 }
 
-void separateVoicedUnvoicedPostProc(evaluationPointsStruct* evals, fftw_complex* result, float* unvoicedSignal, cSample sample, engineCfg config)
+void separateVoicedUnvoicedPostProc(fftw_complex* result, cSample sample, engineCfg config)
 {
     for (int i = 0; i < sample.config.batches; i++)
     {
@@ -693,32 +701,32 @@ void separateVoicedUnvoicedPostProc(evaluationPointsStruct* evals, fftw_complex*
             //> 2j+1 = (2j-1 + 2j+1 - 2j-2/2 - 2j+2/2 + 2j)/2
             //store original abs in imaginary part
         {
-            *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[1] = cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j + 1));
+            *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[1] = cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j + 1));
         }
         *(result + i * (config.nHarmonics + 2) + 1)[0] =
             (
                 *(result + i * (config.nHarmonics + 2) + 1)[1] -
-                cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2)) / 2. +
-                cpxAbsf(*(result + i * (config.nHarmonics + 2))) / 2.
-            );
+                cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2)) / 2. +
+                cpxAbsd(*(result + i * (config.nHarmonics + 2))) / 2.
+                );
         for (int j = 1; j < config.halfHarmonics - 1; j++)
         {
             *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[0] =
                 (
                     *(result + i * (config.nHarmonics + 2) + 2 * j - 1)[1] +
                     *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[1] -
-                    cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j - 2)) / 2. -
-                    cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j + 2)) / 2. +
-                    cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j))
-                ) / 2.;
+                    cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j - 2)) / 2. -
+                    cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j + 2)) / 2. +
+                    cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j))
+                    ) / 2.;
         }
         int j = config.halfHarmonics - 1;
         *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[0] =
             (
                 *(result + i * (config.nHarmonics + 2) + 2 * j - 1)[1] -
-                cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j - 2)) / 2. +
-                cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j)) / 2.
-            );
+                cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j - 2)) / 2. +
+                cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) / 2.
+                );
     }
     for (int i = 0; i < config.halfHarmonics; i++)
     {
@@ -726,7 +734,7 @@ void separateVoicedUnvoicedPostProc(evaluationPointsStruct* evals, fftw_complex*
             (
                 *(result + 2 * i + 1)[0] * 2. +
                 *(result + (config.nHarmonics + 2) + 2 * i + 1)[0]
-            ) / 3.;
+                ) / 3.;
         for (int j = 1; j < sample.config.batches - 1; j++)
         {
             *(result + j * (config.nHarmonics + 2) + 2 * i + 1)[1] =
@@ -734,56 +742,81 @@ void separateVoicedUnvoicedPostProc(evaluationPointsStruct* evals, fftw_complex*
                     *(result + j * (config.nHarmonics + 2) + 2 * i + 1)[0] * 2. +
                     *(result + (j - 1) * (config.nHarmonics + 2) + 2 * i + 1)[0] +
                     *(result + (j + 1) * (config.nHarmonics + 2) + 2 * i + 1)[0]
-                ) / 4.;
+                    ) / 4.;
 
         }
         *(result + (sample.config.batches - 1) * (config.nHarmonics + 2) + 2 * i + 1)[1] =
             (
                 *(result + (sample.config.batches - 1) * (config.nHarmonics + 2) + 2 * i + 1)[0] * 2. +
                 *(result + (sample.config.batches - 2) * (config.nHarmonics + 2) + 2 * i + 1)[0]
-            ) / 3.;
+                ) / 3.;
     }
+}
+
+void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex* result, float* unvoicedSignal, float* hannWindowInst, cSample sample, engineCfg config)
+{
     for (int i = 0; i < sample.config.batches; i++)
     {
         for (int j = 0; j < config.halfHarmonics; j++)
         {
-            *(sample.specharm + i * config.frameSize + j) = fminf(cpxAbsf(*(result + i * (config.nHarmonics + 2) + 2 * j)) - fmaxf(*(result + i * (config.nHarmonics + 2) + 2 * j)[0], *(result + i * (config.nHarmonics + 2) + 2 * j)[1]), 0.);
-            *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(result + i * (config.nHarmonics + 2) + 2 * j));
+            *(sample.specharm + i * config.frameSize + j) = fminf(cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - fmaxf(*(result + i * (config.nHarmonics + 2) + 2 * j)[0], *(result + i * (config.nHarmonics + 2) + 2 * j)[1]), 0.);
+            *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j));
         }
         nfft_plan inverseNUFFT;
-        nfft_init_1d(&inverseNUFFT, config.halfHarmonics, (*(evals + i)).size);
-        for (int i = 0; i < (*(evals + i)).size; i++)
+        nfft_init_1d(&inverseNUFFT, config.halfHarmonics, config.tripleBatchSize);
+        for (int j = 0; j < (*(evals + i)).size; j++)
         {
-            inverseNUFFT.x[i] = fmodf(*((*(evals + i)).evaluationPoints + i), 1.f);
-            if (inverseNUFFT.x[i] > 0.5)
+            inverseNUFFT.x[j] = fmodf(*((*(evals + i)).evaluationPoints + j), 1.f);
+            if (inverseNUFFT.x[j] > 0.5)
             {
-                inverseNUFFT.x[i] -= 1.;
+                inverseNUFFT.x[j] -= 1.;
             }
         }
+        float delta = (*((*(evals + i)).evaluationPoints + (*(evals + i)).size - 1) - *((*(evals + i)).evaluationPoints)) / (*(evals + i)).size;
+        for (int j = (*(evals + i)).size; j < config.tripleBatchSize * config.filterBSMult; j++)
+        {
+            inverseNUFFT.x[j] = fmodf(*((*(evals + i)).evaluationPoints + (*(evals + i)).size - 1) + (j - (*(evals + i)).size) * delta, 1.f);
+            if (inverseNUFFT.x[j] > 0.5)
+            {
+                inverseNUFFT.x[j] -= 1.;
+            }
+        }
+        free((*(evals + i)).evaluationPoints);
         if (inverseNUFFT.flags & PRE_ONE_PSI)
         {
             nfft_precompute_one_psi(&inverseNUFFT);
         }
-        inverseNUFFT.f = cpxOffsetWindow;
-        inverseNUFFT.f_hat = result + i * (config.nHarmonics + 2);//adjust
+        inverseNUFFT.f = (fftw_complex*)malloc(config.tripleBatchSize * config.filterBSMult * sizeof(fftw_complex));
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+            inverseNUFFT.f_hat[i * config.halfHarmonics + j][0] = cos(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * fmaxf(*(result + i * (config.nHarmonics + 2) + 2 * j)[0], *(result + i * (config.nHarmonics + 2) + 2 * j)[1]);
+            inverseNUFFT.f_hat[i * config.halfHarmonics + j][0] = sin(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * fmaxf(*(result + i * (config.nHarmonics + 2) + 2 * j)[0], *(result + i * (config.nHarmonics + 2) + 2 * j)[1]);
+        }
         nfft_adjoint_1d(&inverseNUFFT);
         nfft_finalize(&inverseNUFFT);
-        *(unvoicedSignal + i * config.halfTripleBatchSize) = 0.;
+        for (int j = 0; j < config.tripleBatchSize * config.filterBSMult; j++)
+        {
+            *(unvoicedSignal + i * config.batchSize) += cpxAbsd(inverseNUFFT.f[j]) * *(hannWindowInst + j);
+        }
     }
 }
-
-
-
-
-
-
-
-
 
 //separates voiced and unvoiced excitation of a sample through pitch-synchronous analysis.
 //requires pitch data to be included in the sample struct to work correctly.
 void separateVoicedUnvoiced(cSample sample, engineCfg config)
 {
+    //separation calculations are only necessary if the sample is voiced
+    if (sample.config.isVoiced == 0)
+    {
+        for (int i = 0; i < sample.config.batches; i++)
+        {
+            for (int j = 0; j < config.nHarmonics + 2; j++)
+            {
+                *(sample.specharm + i * config.frameSize + j) = 0.;
+            }
+        }
+        stft_inpl(sample.waveform, sample.config.length, config, sample.excitation);
+    }
     // extended waveform buffer aligned with batch size
     int padLength = config.halfTripleBatchSize * config.filterBSMult;
     int waveLength = sample.config.length + 2 * padLength;
@@ -795,7 +828,6 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     {
         *(wave + i) = *sample.waveform;
     }
-    #pragma omp parallel for
     for (int i = 0; i < sample.config.length; i++)
     {
         *(wave + padLength + i) = *(sample.waveform + i);
@@ -816,31 +848,17 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     evaluationPointsStruct* evals = (evaluationPointsStruct*)malloc(sample.config.batches * sizeof(evaluationPointsStruct));
     for (int i = 0; i < sample.config.batches; i++)
     {
-        //separation calculations are only necessary if the sample is voiced
-        if (sample.config.isVoiced == 0)
-        {
-            for (int j = 0; j < config.nHarmonics + 2; j++)
-            {
-                *(sample.specharm + i * config.frameSize + j) = 0.;
-            }
-            continue;
-        }
         separateVoicedUnvoicedSingleWindow(i, wave, windowLength, hannWindowInst, evals + i, combinedCoeffs, markers, sample, config);
     }
     free(markers.markers);
-    free(hannWindowInst);
-    separateVoicedUnvoicedPostProc(evals, combinedCoeffs, unvoicedSignal, sample, config);
-    free(combinedCoeffs);
-    if (sample.config.isVoiced == 0)
-    {
-        stft_inpl(sample.waveform, sample.config.length, config, sample.excitation);
-    }
-    else
-    {
-        stft_inpl(unvoicedSignal + padLength, sample.config.length, config, sample.excitation);
-    }
-    free(unvoicedSignal);
     free(wave);
+    separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
+    separateVoicedUnvoicedFinalize(evals, combinedCoeffs, unvoicedSignal, hannWindowInst, sample, config);
+    free(combinedCoeffs);
+    free(evals);
+    free(hannWindowInst);
+    stft_inpl(unvoicedSignal + padLength, sample.config.length, config, sample.excitation);
+    free(unvoicedSignal);
 }
 
 //averages all harmonic amplitudes and spectra, stores the result in the avgSpecharm field of the sample, and overwrites the specharms with their difference from the average.

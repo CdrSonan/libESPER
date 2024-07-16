@@ -134,7 +134,11 @@ unsigned int findIndex_double(double* markers, unsigned int markerLength, int po
 
 float cpxAbsf(fftwf_complex input);
 
+double cpxAbsd(fftw_complex input);
+
 float cpxArgf(fftwf_complex input);
+
+double cpxArgd(fftw_complex input);
 
 float* hannWindow(int length, float multiplier);
 

@@ -30,8 +30,10 @@ void LIBESPER_CDECL specCalc(cSample sample, engineCfg config)
     float* highSpectra = highRangeSmooth(sample, signalsAbs, config);
     free(signalsAbs);
     finalizeSpectra(sample, lowSpectra, highSpectra, config);
-    free(lowSpectra);
-    free(highSpectra);
+    printf("specFin end\n");
+    printf("sep start\n");
     separateVoicedUnvoiced(sample, config);
-    finalizeSample(sample, config);
+    printf("sep end\n");
+    //finalizeSample(sample, config);
+    printf("specCalc end\n");
 }

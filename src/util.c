@@ -93,10 +93,20 @@ float cpxAbsf(fftwf_complex input)
     return sqrtf(powf(input[0], 2) + powf(input[1], 2));
 }
 
+double cpxAbsd(fftw_complex input)
+{
+    return sqrtf(pow(input[0], 2) + pow(input[1], 2));
+}
+
 //calculates the phase angle of a complex number
 float cpxArgf(fftwf_complex input)
 {
     return atan2f(input[1], input[0]);
+}
+
+double cpxArgd(fftw_complex input)
+{
+    return atan2(input[1], input[0]);
 }
 
 float* hannWindow(int length, float multiplier)
