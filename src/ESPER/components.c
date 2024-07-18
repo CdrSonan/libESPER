@@ -265,7 +265,6 @@ void tempSmoothSpectra(float* sourceSpectra, float* targetSpectra, cSample sampl
             *(workingSpectra + j) = *(targetSpectra + j);
         }
     }
-    printf("end check\n");
     free(workingSpectra);
 }
 
@@ -276,7 +275,6 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
     float* tgtSpectra = (float*)malloc((sample.config.batches + 2 * sample.config.tempDepth) * (config.halfTripleBatchSize + 1) * sizeof(float));
     tempSmoothSpectra(lowSpectra, tgtSpectra, sample, config);
     free(lowSpectra);
-    printf("post smooth\n");
     //load result into the appropriate portion of sample.specharm
     for (int i = 0; i < sample.config.batches; i++)
     {
@@ -657,7 +655,7 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
     }
 
     nfft_plan combinedNUFFT;
-    nfft_init_1d(&combinedNUFFT, config.nHarmonics + 2, offsetWindowLength);
+    nfft_init_1d(&combinedNUFFT, config.nHarmonics * 2, offsetWindowLength);
     for (int i = 0; i < offsetWindowLength; i++)
     {
         combinedNUFFT.x[i] = fmodf(2.f * *(evaluationPoints + i), 1.f);
@@ -676,10 +674,11 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
         (*(combinedNUFFT.f + i))[1] = 0.;
     }
     nfft_adjoint_1d(&combinedNUFFT);
+    float normFactor = sqrtf((float)offsetWindowLength);
     for (int i = 0; i < config.nHarmonics + 2; i++)
     {
-        *(result + index * (config.nHarmonics + 2) + i)[0] = *(combinedNUFFT.f_hat + i)[0];
-        *(result + index * (config.nHarmonics + 2) + i)[1] = *(combinedNUFFT.f_hat + i)[1];
+        (*(result + index * (config.nHarmonics + 2) + i))[0] = (*(combinedNUFFT.f_hat + i))[0] / normFactor;
+        (*(result + index * (config.nHarmonics + 2) + i))[1] = (*(combinedNUFFT.f_hat + i))[1] / normFactor;
     }
     nfft_finalize(&combinedNUFFT);
     eval->evaluationPoints = evaluationPoints;
@@ -704,54 +703,54 @@ void separateVoicedUnvoicedPostProc(fftw_complex* result, cSample sample, engine
             //> 2j+1 = (2j-1 + 2j+1 - 2j-2/2 - 2j+2/2 + 2j)/2
             //store original abs in imaginary part
         {
-            *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[1] = cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j + 1));
+            (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[1] = cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j + 1));
         }
-        *(result + i * (config.nHarmonics + 2) + 1)[0] =
+        (*(result + i * (config.nHarmonics + 2) + 1))[0] =
             (
-                *(result + i * (config.nHarmonics + 2) + 1)[1] -
+                (*(result + i * (config.nHarmonics + 2) + 1))[1] -
                 cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2)) / 2. +
                 cpxAbsd(*(result + i * (config.nHarmonics + 2))) / 2.
                 );
         for (int j = 1; j < config.halfHarmonics - 1; j++)
         {
-            *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[0] =
+            (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[0] =
                 (
-                    *(result + i * (config.nHarmonics + 2) + 2 * j - 1)[1] +
-                    *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[1] -
+                    (*(result + i * (config.nHarmonics + 2) + 2 * j - 1))[1] +
+                    (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[1] -
                     cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j - 2)) / 2. -
                     cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j + 2)) / 2. +
                     cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j))
                     ) / 2.;
         }
         int j = config.halfHarmonics - 1;
-        *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[0] =
+        (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[0] =
             (
-                *(result + i * (config.nHarmonics + 2) + 2 * j - 1)[1] -
+                (*(result + i * (config.nHarmonics + 2) + 2 * j - 1))[1] -
                 cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j - 2)) / 2. +
                 cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) / 2.
                 );
     }
     for (int i = 0; i < config.halfHarmonics; i++)
     {
-        *(result + 2 * i + 1)[1] =
+        (*(result + 2 * i + 1))[1] =
             (
-                *(result + 2 * i + 1)[0] * 2. +
-                *(result + (config.nHarmonics + 2) + 2 * i + 1)[0]
+                (*(result + 2 * i + 1))[0] * 2. +
+                (*(result + (config.nHarmonics + 2) + 2 * i + 1))[0]
                 ) / 3.;
         for (int j = 1; j < sample.config.batches - 1; j++)
         {
-            *(result + j * (config.nHarmonics + 2) + 2 * i + 1)[1] =
+            (*(result + j * (config.nHarmonics + 2) + 2 * i + 1))[1] =
                 (
-                    *(result + j * (config.nHarmonics + 2) + 2 * i + 1)[0] * 2. +
-                    *(result + (j - 1) * (config.nHarmonics + 2) + 2 * i + 1)[0] +
-                    *(result + (j + 1) * (config.nHarmonics + 2) + 2 * i + 1)[0]
+                    (*(result + j * (config.nHarmonics + 2) + 2 * i + 1))[0] * 2. +
+                    (*(result + (j - 1) * (config.nHarmonics + 2) + 2 * i + 1))[0] +
+                    (*(result + (j + 1) * (config.nHarmonics + 2) + 2 * i + 1))[0]
                     ) / 4.;
 
         }
-        *(result + (sample.config.batches - 1) * (config.nHarmonics + 2) + 2 * i + 1)[1] =
+        (*(result + (sample.config.batches - 1) * (config.nHarmonics + 2) + 2 * i + 1))[1] =
             (
-                *(result + (sample.config.batches - 1) * (config.nHarmonics + 2) + 2 * i + 1)[0] * 2. +
-                *(result + (sample.config.batches - 2) * (config.nHarmonics + 2) + 2 * i + 1)[0]
+                (*(result + (sample.config.batches - 1) * (config.nHarmonics + 2) + 2 * i + 1))[0] * 2. +
+                (*(result + (sample.config.batches - 2) * (config.nHarmonics + 2) + 2 * i + 1))[0]
                 ) / 3.;
     }
 }
@@ -762,22 +761,20 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
     {
         for (int j = 0; j < config.halfHarmonics; j++)
         {
-            *(sample.specharm + i * config.frameSize + j) = fminf(cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - fmaxf(*(result + i * (config.nHarmonics + 2) + 2 * j)[0], *(result + i * (config.nHarmonics + 2) + 2 * j)[1]), 0.);
+            *(sample.specharm + i * config.frameSize + j) = cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));// fminf(cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - fmaxf(*(result + i * (config.nHarmonics + 2) + 2 * j + 1)[0], *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[1]), 0.);
             *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j));
         }
         nfft_plan inverseNUFFT;
-        nfft_init_1d(&inverseNUFFT, config.halfHarmonics, config.tripleBatchSize * config.filterBSMult);
+        nfft_init_1d(&inverseNUFFT, config.nHarmonics, config.tripleBatchSize * config.filterBSMult);
         float preIncrement = *((*(evals + i)).evaluationPoints + 1) - *((*(evals + i)).evaluationPoints);
         for (int j = 0; j < -(*(evals + i)).offset; j++)
         {
-            printf("%i\n", j);
             inverseNUFFT.x[j] = fmodf(j - j * preIncrement, 1.f); //added j because j mod 1 = 0 and it prevents value from going negative
             if (inverseNUFFT.x[j] > 0.5)
             {
                 inverseNUFFT.x[j] -= 1.;
             }
         }
-        printf("end\n");
         int lowerLimit;
         if ((*(evals + i)).offset < 0)
         {
@@ -798,25 +795,21 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
         }
         for (int j = lowerLimit; j < upperLimit; j++)
         {
-            printf("%i\n", j);
             inverseNUFFT.x[j] = fmodf(*((*(evals + i)).evaluationPoints + j), 1.f);
             if (inverseNUFFT.x[j] > 0.5)
             {
                 inverseNUFFT.x[j] -= 1.;
             }
         }
-        printf("end\n");
         float postIncrement = *((*(evals + i)).evaluationPoints + (*(evals + i)).size - 1) - *((*(evals + i)).evaluationPoints + (*(evals + i)).size - 2);
         for (int j = -(*(evals + i)).offset + (*(evals + i)).size; j < config.tripleBatchSize * config.filterBSMult; j++)
         {
-            printf("%i\n", j);
             inverseNUFFT.x[j] = fmodf(j * postIncrement, 1.f);
             if (inverseNUFFT.x[j] > 0.5)
             {
                 inverseNUFFT.x[j] -= 1.;
             }
         }
-        printf("end\n");
         free((*(evals + i)).evaluationPoints);
         if (inverseNUFFT.flags & PRE_ONE_PSI)
         {
@@ -824,15 +817,18 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
         }
         for (int j = 0; j < config.halfHarmonics; j++)
         {
+            inverseNUFFT.f_hat[config.nHarmonics - j - 1][0] = cos(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
+            inverseNUFFT.f_hat[config.nHarmonics - j - 1][1] = sin(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
             inverseNUFFT.f_hat[j][0] = cos(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
             inverseNUFFT.f_hat[j][1] = sin(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
         }
         nfft_trafo_1d(&inverseNUFFT);
-        nfft_finalize(&inverseNUFFT);
+        float normFactor = sqrtf((float)(config.tripleBatchSize * config.filterBSMult));
         for (int j = 0; j < config.tripleBatchSize * config.filterBSMult; j++)
         {
-            *(unvoicedSignal + i * config.batchSize) += *(wave + i * config.batchSize + j) - cpxAbsd(inverseNUFFT.f[j]) * *(hannWindowInst + j);
+            *(unvoicedSignal + i * config.batchSize + j) += (*(wave + i * config.batchSize + j) - cpxAbsd(inverseNUFFT.f[j]) / normFactor) * *(hannWindowInst + j);
         }
+        nfft_finalize(&inverseNUFFT);
     }
 }
 
