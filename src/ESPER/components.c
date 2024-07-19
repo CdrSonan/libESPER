@@ -603,7 +603,7 @@ typedef struct
     int size;
 } evaluationPointsStruct;
 
-void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength, float* hannWindowInst, evaluationPointsStruct* eval, fftw_complex* result, PitchMarkerStruct markers, cSample sample, engineCfg config)
+void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength, evaluationPointsStruct* eval, fftw_complex* result, PitchMarkerStruct markers, cSample sample, engineCfg config)
 {
     float* window = wave + index * config.batchSize;
     //get fitting segment of marker array
@@ -658,7 +658,7 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
     nfft_init_1d(&combinedNUFFT, config.nHarmonics * 2, offsetWindowLength);
     for (int i = 0; i < offsetWindowLength; i++)
     {
-        combinedNUFFT.x[i] = fmodf(2.f * *(evaluationPoints + i), 1.f);
+        combinedNUFFT.x[i] = fmodf(0.5 * *(evaluationPoints + i), 1.f);
         if (combinedNUFFT.x[i] > 0.5)
         {
             combinedNUFFT.x[i] -= 1.;
@@ -668,11 +668,13 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
     {
         nfft_precompute_one_psi(&combinedNUFFT);
     }
+    float* hannWindowInst = hannWindow(offsetWindowLength, 1.);
     for (int i = 0; i < offsetWindowLength; i++)
     {
-        (*(combinedNUFFT.f + i))[0] = *(offsetWindow + i);
+        (*(combinedNUFFT.f + i))[0] = *(offsetWindow + i) * *(hannWindowInst + i);
         (*(combinedNUFFT.f + i))[1] = 0.;
     }
+    free(hannWindowInst);
     nfft_adjoint_1d(&combinedNUFFT);
     float normFactor = sqrtf((float)offsetWindowLength);
     for (int i = 0; i < config.nHarmonics + 2; i++)
@@ -765,7 +767,7 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
             *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j));
         }
         nfft_plan inverseNUFFT;
-        nfft_init_1d(&inverseNUFFT, config.nHarmonics, config.tripleBatchSize * config.filterBSMult);
+        nfft_init_1d(&inverseNUFFT, config.halfHarmonics, config.tripleBatchSize * config.filterBSMult);
         float preIncrement = *((*(evals + i)).evaluationPoints + 1) - *((*(evals + i)).evaluationPoints);
         for (int j = 0; j < -(*(evals + i)).offset; j++)
         {
@@ -817,8 +819,8 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
         }
         for (int j = 0; j < config.halfHarmonics; j++)
         {
-            inverseNUFFT.f_hat[config.nHarmonics - j - 1][0] = cos(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
-            inverseNUFFT.f_hat[config.nHarmonics - j - 1][1] = sin(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
+            //inverseNUFFT.f_hat[config.nHarmonics - j - 1][0] = cos(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
+            //inverseNUFFT.f_hat[config.nHarmonics - j - 1][1] = sin(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
             inverseNUFFT.f_hat[j][0] = cos(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
             inverseNUFFT.f_hat[j][1] = sin(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
         }
@@ -871,18 +873,17 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     {
         *(unvoicedSignal + i) = 0.f;
     }
-
-    float* hannWindowInst = hannWindow(windowLength, 1. / config.filterBSMult);
     //Get DIO Pitch markers
     PitchMarkerStruct markers = calculatePitchMarkers(sample, wave, waveLength, config);
     fftw_complex* combinedCoeffs = (fftw_complex*)malloc(sample.config.batches * (config.nHarmonics + 2) * sizeof(fftw_complex));
     evaluationPointsStruct* evals = (evaluationPointsStruct*)malloc(sample.config.batches * sizeof(evaluationPointsStruct));
     for (int i = 0; i < sample.config.batches; i++)
     {
-        separateVoicedUnvoicedSingleWindow(i, wave, windowLength, hannWindowInst, evals + i, combinedCoeffs, markers, sample, config);
+        separateVoicedUnvoicedSingleWindow(i, wave, windowLength, evals + i, combinedCoeffs, markers, sample, config);
     }
     free(markers.markers);
-    separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
+    //separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
+    float* hannWindowInst = hannWindow(windowLength, 1.);
     separateVoicedUnvoicedFinalize(evals, combinedCoeffs, wave, unvoicedSignal, hannWindowInst, sample, config);
     free(wave);
     free(combinedCoeffs);
