@@ -589,6 +589,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
     for (int i = 0; i < markers.markerLength; i++)
     {
         *(markers.markers + i) = (double)(*(markers.markersUp.content + i) + *(markers.markersDown.content + i)) / 2.;
+        //*(markers.markers + i) = floor(*(markers.markers + i)); Last resort option should 1-sample timing mismatch between wave and re-synthesized voiced signal not be resolvable otherwise
     }
     dynIntArray_dealloc(&markers.markersUp);
     dynIntArray_dealloc(&markers.markersDown);
@@ -618,8 +619,8 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
         localMarkerEnd = markers.markerLength - 1;
     }
     float* offsetWindow = wave + (int)*(markers.markers + localMarkerStart);
-    int offsetWindowLength = (int)*(markers.markers + localMarkerEnd) - (int)ceil(*(markers.markers + localMarkerStart)) + 1;
-    int windowOffset = index * config.batchSize - (int)ceil(*(markers.markers + localMarkerStart));
+    int offsetWindowLength = (int)*(markers.markers + localMarkerEnd) - (int)floor(*(markers.markers + localMarkerStart)) + 1;
+    int windowOffset = index * config.batchSize - (int)floor(*(markers.markers + localMarkerStart));
     int markerLength = localMarkerEnd - localMarkerStart + 1;
     float* evaluationPoints;
     //check if there are sufficient markers to perform pitch-synchronous analysis
@@ -812,7 +813,7 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
                 inverseNUFFT.x[j] -= 1.;
             }
         }
-        if (i == 20) {
+        if (i == 100 || i == 20) {
             for (int j = 0; j < config.tripleBatchSize * config.filterBSMult; j++) printf("%f, ", inverseNUFFT.x[j]); printf("\n");
             printf("\n");
             for (int j = 0; j < (*(evals + i)).size; j++) printf("%f, ", *((*(evals + i)).evaluationPoints + j)); printf("\n");
@@ -836,7 +837,7 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
         for (int j = 0; j < config.tripleBatchSize * config.filterBSMult; j++)
         {
             *(unvoicedSignal + i * config.batchSize + j) += (*(wave + i * config.batchSize + j) - inverseNUFFT.f[j][0]) * *(hannWindowInst + j);
-            if (i == 100 && j < 200) //shifted for i = 20, correct for i = 100
+            if ((i == 100 || i == 20) && j < 200) //shifted for i = 20, correct for i = 100
             {
                 printf("%f, %f\n", *(wave + i * config.batchSize + j), inverseNUFFT.f[j][0]);
             }
