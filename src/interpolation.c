@@ -192,7 +192,6 @@ float* circInterp(float* x, float* y, float* xs, int len, int lenxs)
     float factor;
     float a;
     float b;
-    printf("slerp params: %i, %f, %f, %i, %f, %f\n", len, *x, *(x + len - 1), lenxs, *xs, *(xs + lenxs - 1));
     while (idxs < lenxs)
     {
         while ((*(xs + idxs) > *(x + idx + 1)) && (idx < (len - 1)))

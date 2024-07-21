@@ -15,34 +15,46 @@
 #include "src/interpolation.h"
 #include LIBESPER_FFTW_INCLUDE_PATH
 
-void LIBESPER_CDECL render(float* specharm, float* excitation, float* pitch, float* target, int length, engineCfg config)
+void LIBESPER_CDECL renderUnvoiced(float* specharm, float* excitation, int premultiplied, float* target, int length, engineCfg config)
 {
-	printf("C input params: %p %p %p %p %i\n", specharm, excitation, pitch, target, length);
-	printf("C render 1\n");
-	//fftwf_complex* cpxExcitation = (fftwf_complex*)malloc(length * (config.halfTripleBatchSize + 1) * sizeof(fftwf_complex));
-	//for (int i = 0; i < length * (config.halfTripleBatchSize + 1); i++)
-	//{
-	//	*(cpxExcitation + i)[0] = 0.;//*(excitation + i);
-	//	*(cpxExcitation + i)[1] = 0.;//*(excitation + length * (config.halfTripleBatchSize + 1) + i);
-	//}
-	//printf("C render 2\n");
-	//istft_hann_inpl(cpxExcitation, length, length * config.batchSize, config, target);
-	printf("C render 3\n");
-	//free(cpxExcitation);
+	fftwf_complex* cpxExcitation = (fftwf_complex*)malloc(length * (config.halfTripleBatchSize + 1) * sizeof(fftwf_complex));
+	if (premultiplied != 0)
+	{
+		for (int i = 0; i < length * (config.halfTripleBatchSize + 1); i++)
+		{
+			(*(cpxExcitation + i))[0] = *(excitation + i);
+			(*(cpxExcitation + i))[1] = *(excitation + length * (config.halfTripleBatchSize + 1) + i);
+		}
+	}
+	else
+	{
+		for (int i = 0; i < length; i++)
+		{
+			for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
+			{
+				float multiplier = *(specharm + i * config.frameSize + config.nHarmonics + 2 + i);
+				(*(cpxExcitation + i))[0] = *(excitation + i) * multiplier;
+				(*(cpxExcitation + i))[1] = *(excitation + length * (config.halfTripleBatchSize + 1) + i) * multiplier;
+			}
+		}
+	}
+	istft_hann_inpl(cpxExcitation, length, length * config.batchSize, config, target);
+	free(cpxExcitation);
+}
+
+void LIBESPER_CDECL renderVoiced(float* specharm, float* pitch, float* target, int length, engineCfg config)
+{
 	float* frameSpace = (float*)malloc(length * sizeof(float));
 	for (int i = 0; i < length; i++)
 	{
 		*(frameSpace + i) = (float)i;
 	}
-	printf("C render 4\n");
 	float* waveSpace = (float*)malloc(length * config.batchSize * sizeof(float));
 	for (int i = 0; i < length * config.batchSize; i++)
 	{
 		*(waveSpace + i) = ((float)i - 0.5) / (float)config.batchSize;
 	}
-	printf("C render 5\n");
 	float* wavePitch = extrap(frameSpace, pitch, waveSpace, length, length * config.batchSize);
-	printf("C render 6\n");
 	float* pitchOffsets = (float*)malloc(length * config.batchSize * sizeof(float));
 	*pitchOffsets = 0.;
 	for (int i = 0; i < length * config.batchSize - 1; i++)
@@ -50,7 +62,6 @@ void LIBESPER_CDECL render(float* specharm, float* excitation, float* pitch, flo
 		*(pitchOffsets + i + 1) = *(pitchOffsets + i) + 1. / *(wavePitch + i);
 	}
 	free(wavePitch);
-	printf("C render 7\n");
 	for (int i = 0; i < config.halfHarmonics; i++)
 	{
 		float* harmAbs = (float*)malloc(length * sizeof(float));
@@ -72,5 +83,10 @@ void LIBESPER_CDECL render(float* specharm, float* excitation, float* pitch, flo
 	free(pitchOffsets);
 	free(frameSpace);
 	free(waveSpace);
-	printf("C render 8\n");
+}
+
+void LIBESPER_CDECL render(float* specharm, float* excitation, float* pitch, int premultipliedExc, float* target, int length, engineCfg config)
+{
+	renderUnvoiced(specharm, excitation, premultipliedExc, target, length, config);
+	renderVoiced(specharm, pitch, target, length, config);
 }

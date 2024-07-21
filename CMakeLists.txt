@@ -10,6 +10,7 @@ add_library(esper SHARED
     src/Resampler/resampler.c
     src/Resampler/loop.c
     src/Renderer/renderer.c
+    src/Renderer/modifiers.c
     src/fft.c
     src/interpolation.c
     src/util.c)
@@ -33,6 +34,7 @@ add_executable(test_esper
     src/Resampler/resampler.c
     src/Resampler/loop.c
     src/Renderer/renderer.c
+    src/Renderer/modifiers.c
     src/fft.c
     src/interpolation.c
     src/util.c

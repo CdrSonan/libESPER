@@ -624,7 +624,19 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
     int markerLength = localMarkerEnd - localMarkerStart + 1;
     float* evaluationPoints;
     //check if there are sufficient markers to perform pitch-synchronous analysis
-    if (markerLength <= 2)
+    if (markerLength <= 1)
+    {
+        evaluationPoints = (float*)malloc(windowLength * sizeof(float));
+        for (int j = 0; j < windowLength; j++)
+        {
+            *(evaluationPoints + j) = (float)j / sample.config.pitch;
+        }
+        offsetWindow = window;
+        offsetWindowLength = windowLength;
+        windowOffset = 0;
+        markerLength = 2;
+    }
+    else if (markerLength == 2)
     {
         evaluationPoints = (float*)malloc(offsetWindowLength * sizeof(float));
         for (int j = 0; j < offsetWindowLength; j++)
@@ -763,9 +775,9 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
     {
         for (int j = 0; j < config.halfHarmonics; j++)
         {
-            *(sample.specharm + i * config.frameSize + j) = cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
-            //*(sample.specharm + i * config.frameSize + j) = fminf(cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - fmaxf(*(result + i * (config.nHarmonics + 2) + 2 * j + 1)[0], *(result + i * (config.nHarmonics + 2) + 2 * j + 1)[1]), 0.);
-            *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j));
+            float reducer = fmaxf((*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[0], (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[1]) * sample.config.voicedThrh;
+            *(sample.specharm + i * config.frameSize + config.halfHarmonics - 1 - j) = fmaxf(cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - reducer, 0.);
+            *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j));
         }
         nfft_plan inverseNUFFT;
         nfft_init_1d(&inverseNUFFT, config.nHarmonics, config.tripleBatchSize * config.filterBSMult);
@@ -813,11 +825,6 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
                 inverseNUFFT.x[j] -= 1.;
             }
         }
-        if (i == 100 || i == 20) {
-            for (int j = 0; j < config.tripleBatchSize * config.filterBSMult; j++) printf("%f, ", inverseNUFFT.x[j]); printf("\n");
-            printf("\n");
-            for (int j = 0; j < (*(evals + i)).size; j++) printf("%f, ", *((*(evals + i)).evaluationPoints + j)); printf("\n");
-        }
         free((*(evals + i)).evaluationPoints);
         if (inverseNUFFT.flags & PRE_ONE_PSI)
         {
@@ -837,10 +844,6 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
         for (int j = 0; j < config.tripleBatchSize * config.filterBSMult; j++)
         {
             *(unvoicedSignal + i * config.batchSize + j) += (*(wave + i * config.batchSize + j) - inverseNUFFT.f[j][0]) * *(hannWindowInst + j);
-            if ((i == 100 || i == 20) && j < 200) //shifted for i = 20, correct for i = 100
-            {
-                printf("%f, %f\n", *(wave + i * config.batchSize + j), inverseNUFFT.f[j][0]);
-            }
         }
         nfft_finalize(&inverseNUFFT);
     }
@@ -871,7 +874,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     // fill input buffer, extend data with reflection padding on both sides
     for (int i = 0; i < padLength; i++)
     {
-        *(wave + i) = *sample.waveform;
+        *(wave + padLength - 1 - i) = *(sample.waveform + i);
     }
     for (int i = 0; i < sample.config.length; i++)
     {
@@ -894,8 +897,8 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         separateVoicedUnvoicedSingleWindow(i, wave, windowLength, evals + i, combinedCoeffs, markers, sample, config);
     }
     free(markers.markers);
-    //separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
-    float* hannWindowInst = hannWindow(windowLength, 1.);
+    separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
+    float* hannWindowInst = hannWindow(windowLength, 1. / 3.);
     separateVoicedUnvoicedFinalize(evals, combinedCoeffs, wave, unvoicedSignal, hannWindowInst, sample, config);
     free(wave);
     free(combinedCoeffs);
