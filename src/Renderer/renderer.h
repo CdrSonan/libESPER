@@ -1,4 +1,4 @@
-//Copyright 2023 Johannes Klatt
+//Copyright 2024 Johannes Klatt
 
 //This file is part of libESPER.
 //libESPER is free software: you can redistribute it and /or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or any later version.
@@ -9,4 +9,8 @@
 
 #include "src/util.h"
 
-LIBESPER_EXPORT void LIBESPER_CDECL render(float* specharm, float* excitation, float* pitch, float* target, int length, engineCfg config);
+LIBESPER_EXPORT void LIBESPER_CDECL renderUnvoiced(float* specharm, float* excitation, int premultiplied, float* target, int length, engineCfg config);
+
+LIBESPER_EXPORT void LIBESPER_CDECL renderVoiced(float* specharm, float* pitch, float* phase, float* target, int length, engineCfg config);
+
+LIBESPER_EXPORT void LIBESPER_CDECL render(float* specharm, float* excitation, float* pitch, int premultipliedExc, float* phase, float* target, int length, engineCfg config);

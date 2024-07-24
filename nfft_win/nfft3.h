@@ -29,6 +29,7 @@ extern "C"
 
 #define NFFT_CONCAT(prefix, name) prefix ## name
 
+#define NFFT_DLL
 /* IMPORTANT: for Windows compilers, you should add a line
  *   #define NFFT_DLL
  * here and in kernel/infft.h if you are compiling/using NFFT as a DLL, in order

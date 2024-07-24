@@ -22,7 +22,8 @@
 float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
 {
     //scale cutoff frequency based on window size
-    int specWidth = (int)((float)config.tripleBatchSize / (float)(sample.config.specWidth + 3) / fmax(sample.config.expectedPitch / 440., 1.));
+    //legacy method: int specWidth = (int)((float)config.tripleBatchSize / (float)(sample.config.specWidth + 3) / fmax(sample.config.expectedPitch / 440., 1.));
+    int specWidth = (int)((float)config.sampleRate / 6. / (float)sample.config.expectedPitch);
     float* spectra = (float*) malloc(sample.config.batches * (config.halfTripleBatchSize + 1) * sizeof(float));
     //define fourier-space windowing function for lowpass filter
     float* cutoffWindow = (float*) malloc((config.halfTripleBatchSize / 2 + 1) * sizeof(float));
@@ -32,7 +33,7 @@ float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
     }
     for (int i = specWidth / 2; i < specWidth; i++)
     {
-        *(cutoffWindow + i) = 1. - (float)(i - (specWidth / 2)) / (float)(ceildiv(specWidth, 2) - 1);
+        *(cutoffWindow + i) = 1.;// -(float)(i - (specWidth / 2)) / (float)(ceildiv(specWidth, 2) - 1);
     }
     for (int i = specWidth; i < config.halfTripleBatchSize / 2 + 1; i++)
     {
@@ -158,10 +159,10 @@ float* highRangeSmooth(cSample sample, float* signalsAbs, engineCfg config) {
 
 //given two arrays lowSpectra and highSpectra, which are accurate spectra of an audioSample for low and high frequencies respectively,
 //this function performs blending to produce a single, accurate spectrum, performs additional temporal smoothing, and ensures the result is > 0.
-void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engineCfg config)
+void mergeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engineCfg config)
 {
     //slope used for blending lowSpectra and highSpectra
-    float* slope = (float*) malloc((config.halfTripleBatchSize + 1) * sizeof(float));
+    float* slope = (float*)malloc((config.halfTripleBatchSize + 1) * sizeof(float));
     for (int i = 0; i < config.spectralRolloff1; i++)
     {
         *(slope + i) = 0.;
@@ -174,7 +175,6 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
     {
         *(slope + i) = 1.;
     }
-    #pragma omp parallel for
     for (int i = 0; i < sample.config.batches; i++)
     {
         for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
@@ -195,34 +195,37 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
         }
     }
     free(slope);
+}
+
+void tempSmoothSpectra(float* sourceSpectra, float* targetSpectra, cSample sample, engineCfg config)
+{
     //variable for the length of the data in the time dimension, with padding on both sides
     unsigned int timeSize = sample.config.batches + 2 * sample.config.tempDepth;
     //allocate buffers
-    float* workingSpectra = (float*) malloc(timeSize * (config.halfTripleBatchSize + 1) * sizeof(float));
-    float* spectra = (float*) malloc(timeSize * (config.halfTripleBatchSize + 1) * sizeof(float));
+    float* workingSpectra = (float*)malloc(timeSize * (config.halfTripleBatchSize + 1) * sizeof(float));
     //copy data to buffers and add padding
     for (int i = 0; i < sample.config.tempDepth; i++)
     {
         for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
         {
-            *(workingSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(lowSpectra + j);
-            *(spectra + i * (config.halfTripleBatchSize + 1) + j) = *(lowSpectra + j);
+            *(workingSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sourceSpectra + j);
+            *(targetSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sourceSpectra + j);
         }
     }
     for (int i = sample.config.tempDepth; i < sample.config.tempDepth + sample.config.batches; i++)
     {
         for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
         {
-            *(workingSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(lowSpectra + (i - sample.config.tempDepth) * (config.halfTripleBatchSize + 1) + j);
-            *(spectra + i * (config.halfTripleBatchSize + 1) + j) = *(lowSpectra + (i - sample.config.tempDepth) * (config.halfTripleBatchSize + 1) + j);
+            *(workingSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sourceSpectra + (i - sample.config.tempDepth) * (config.halfTripleBatchSize + 1) + j);
+            *(targetSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sourceSpectra + (i - sample.config.tempDepth) * (config.halfTripleBatchSize + 1) + j);
         }
     }
     for (int i = sample.config.tempDepth + sample.config.batches; i < timeSize; i++)
     {
         for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
         {
-            *(workingSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(lowSpectra + (sample.config.batches - 1) * (config.halfTripleBatchSize + 1) + j);
-            *(spectra + i * (config.halfTripleBatchSize + 1) + j) = *(lowSpectra + (sample.config.batches - 1) * (config.halfTripleBatchSize + 1) + j);
+            *(workingSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sourceSpectra + (sample.config.batches - 1) * (config.halfTripleBatchSize + 1) + j);
+            *(targetSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sourceSpectra + (sample.config.batches - 1) * (config.halfTripleBatchSize + 1) + j);
         }
     }
     //same contraption for handling running mean windows crossing the edge of the buffers as in highRangeSmooth()
@@ -241,45 +244,54 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
                     if (j + l >= timeSize)
                     {
                         highJ -= timeSize;
-                    } else if (j - l < 0)
+                    }
+                    else if (j - l < 0)
                     {
                         lowJ += timeSize;
                     }
                     //perform running-mean smoothing
-                    *(spectra + j * (config.halfTripleBatchSize + 1) + k) += *(workingSpectra + (highJ + l) * (config.halfTripleBatchSize + 1) + k) + *(workingSpectra + (lowJ - l) * (config.halfTripleBatchSize + 1) + k);
+                    *(targetSpectra + j * (config.halfTripleBatchSize + 1) + k) += *(workingSpectra + (highJ + l) * (config.halfTripleBatchSize + 1) + k) + *(workingSpectra + (lowJ - l) * (config.halfTripleBatchSize + 1) + k);
                 }
                 //normalize result
-                *(spectra + j * (config.halfTripleBatchSize + 1) + k) /= 2 * sample.config.tempWidth + 1;
+                *(targetSpectra + j * (config.halfTripleBatchSize + 1) + k) /= 2 * sample.config.tempWidth + 1;
             }
         }
         //take maximum of both buffers
         for (int j = 0; j < timeSize * (config.halfTripleBatchSize + 1); j++)
         {
-            if (*(workingSpectra + j) > *(spectra + j))
+            if (*(workingSpectra + j) > *(targetSpectra + j))
             {
-                *(spectra + j) = *(workingSpectra + j);
+                *(targetSpectra + j) = *(workingSpectra + j);
             }
-            *(workingSpectra + j) = *(spectra + j);
+            *(workingSpectra + j) = *(targetSpectra + j);
         }
     }
-    //load result into the appropriate portion of sample.specharm
     free(workingSpectra);
-    #pragma omp parallel for
+}
+
+void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engineCfg config)
+{
+    mergeSpectra(sample, lowSpectra, highSpectra, config);
+    free(highSpectra);
+    float* tgtSpectra = (float*)malloc((sample.config.batches + 2 * sample.config.tempDepth) * (config.halfTripleBatchSize + 1) * sizeof(float));
+    tempSmoothSpectra(lowSpectra, tgtSpectra, sample, config);
+    free(lowSpectra);
+    //load result into the appropriate portion of sample.specharm
     for (int i = 0; i < sample.config.batches; i++)
     {
         for (int j = 0; j < (config.halfTripleBatchSize + 1); j++)
         {
-            if (*(spectra + (sample.config.tempDepth + i) * (config.halfTripleBatchSize + 1) + j) < 0.001)
+            if (*(tgtSpectra + (sample.config.tempDepth + i) * (config.halfTripleBatchSize + 1) + j) < 0.001)
             {
                 *(sample.specharm + i * config.frameSize + 2 * config.halfHarmonics + j) = 0.001;
             }
             else
             {
-                *(sample.specharm + i * config.frameSize + 2 * config.halfHarmonics + j) = *(spectra + (sample.config.tempDepth + i) * (config.halfTripleBatchSize + 1) + j);
+                *(sample.specharm + i * config.frameSize + 2 * config.halfHarmonics + j) = *(tgtSpectra + (sample.config.tempDepth + i) * (config.halfTripleBatchSize + 1) + j);
             }
         }
     }
-    free(spectra);
+    free(tgtSpectra);
 }
 
 //struct for holding the output of the pitch marker calculator.
@@ -288,6 +300,12 @@ typedef struct
 {
     double* markers;
     unsigned int markerLength;
+    float* wave;
+    int waveLength;
+    dynIntArray transitionsUp;
+    dynIntArray transitionsDown;
+    dynIntArray markersUp;
+    dynIntArray markersDown;
 }
 PitchMarkerStruct;
 
@@ -314,44 +332,11 @@ int getLocalPitch(int position, cSample sample, engineCfg config)
     return *(sample.pitchDeltas + effectivePos);
 }
 
-//calculates precise pitch markers for the padded waveform of a sample.
-//There is one marker for each vocal chord vibration, and they are pitch-synchronous.
-//The phase angle of each marker with respect to the f0 is constant, though its exact value is arbitrary and depends on the shape of the waveform.
-//This algorithm was originally based on DIO, but has since been adapted and heavily modified.
-PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLength, engineCfg config)
+void seedPitchMarkers(PitchMarkerStruct* markers, cSample sample, engineCfg config)
 {
-    PitchMarkerStruct output;
-    //get all zero transitions and load them into dynamic arrays
-    dynIntArray zeroTransitionsUp;
-    dynIntArray_init(&zeroTransitionsUp);
-    dynIntArray zeroTransitionsDown;
-    dynIntArray_init(&zeroTransitionsDown);
-    for (int i = 2; i < waveLength; i++)
-    {
-        if ((*(wave + i - 1) < 0) && (*(wave + i) >= 0))
-        {
-            dynIntArray_append(&zeroTransitionsUp, i);
-        }
-        if ((*(wave + i - 1) >= 0) && (*(wave + i) < 0))
-        {
-            dynIntArray_append(&zeroTransitionsDown, i);
-        }
-    }
-    //check if there are enough transitions to continue
-    if (zeroTransitionsUp.length <= 1 || zeroTransitionsDown.length <= 1)
-    {
-        //not enough transitions; return two markers describing the approximate pitch
-        output.markers = (double*) malloc (2 * sizeof(double));
-        *output.markers = 0.;
-        *(output.markers + 1) = (double)sample.config.pitch;
-        output.markerLength = 2;
-        return output;
-    }
     //allocate dynarrays for markers
-    dynIntArray upTransitionMarkers;
-    dynIntArray_init(&upTransitionMarkers);
-    dynIntArray downTransitionMarkers;
-    dynIntArray_init(&downTransitionMarkers);
+    dynIntArray_init(&markers->markersUp);
+    dynIntArray_init(&markers->markersDown);
     //determine first relevant transition
     unsigned int offset = 0;
     short skip = 0;
@@ -365,32 +350,32 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
     while (1)
     {
         //the length of the shorter zeroTransition array is a hard upper limit for the offset, since it is impossible to find further transition beyond it
-        if (zeroTransitionsUp.length > zeroTransitionsDown.length)
+        if (markers->transitionsUp.length > markers->transitionsDown.length)
         {
-            limit = zeroTransitionsDown.length;
+            limit = markers->transitionsDown.length;
         }
         else
         {
-            limit = zeroTransitionsUp.length;
+            limit = markers->transitionsUp.length;
         }
         //fallback if no match is found using any possible offset
         if (offset == limit)
         {
-            dynIntArray_append(&upTransitionMarkers, *zeroTransitionsUp.content);
-            dynIntArray_append(&downTransitionMarkers, *zeroTransitionsUp.content + sample.config.pitch / 2);
+            dynIntArray_append(&markers->markersUp, *markers->transitionsUp.content);
+            dynIntArray_append(&markers->markersDown, *markers->transitionsUp.content + sample.config.pitch / 2);
             skip = 1;
             break;
         }
         //increase offset until a valid list of upTransitionCandidates for the first upwards transition is obtained
         candidateOffset = offset;
         //search for candidates within one expected wavelength from the current offset
-        limit = *(zeroTransitionsUp.content + offset) + sample.config.pitch;
+        limit = *(markers->transitionsUp.content + offset) + sample.config.pitch;
         //limit search to the length of the waveform
-        if (*(zeroTransitionsDown.content + zeroTransitionsDown.length - 1) < limit)
+        if (*(markers->transitionsDown.content + markers->transitionsDown.length - 1) < limit)
         {
-            limit = *(zeroTransitionsDown.content + zeroTransitionsDown.length - 1);
+            limit = *(markers->transitionsDown.content + markers->transitionsDown.length - 1);
         }
-        candidateLength = findIndex(zeroTransitionsUp.content, zeroTransitionsUp.length, limit) - candidateOffset;//check forpossible implications of zeroTrUp.len >? original limit
+        candidateLength = findIndex(markers->transitionsUp.content, markers->transitionsUp.length, limit) - candidateOffset;//check forpossible implications of zeroTrUp.len >? original limit
         if (candidateLength == 0)
         {
             //no candidates found; increase offset and try again
@@ -401,21 +386,21 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         //select candidate with highest derivative
         for (int i = 0; i < candidateLength; i++)
         {
-            index = *(zeroTransitionsUp.content + candidateOffset + i);
-            derr = *(wave + index) - *(wave + index - 1);
+            index = *(markers->transitionsUp.content + candidateOffset + i);
+            derr = *(markers->wave + index) - *(markers->wave + index - 1);
             if (derr > maxDerr)
             {
                 maxDerr = derr;
                 maxIndex = index;
             }
         }
-        candidateOffset = findIndex(zeroTransitionsDown.content, zeroTransitionsDown.length, maxIndex);
+        candidateOffset = findIndex(markers->transitionsDown.content, markers->transitionsDown.length, maxIndex);
         limit = maxIndex + getLocalPitch(maxIndex, sample, config);//check if out of bounds like with previous limit
-        candidateLength = findIndex(zeroTransitionsDown.content, zeroTransitionsDown.length, limit) - candidateOffset;
+        candidateLength = findIndex(markers->transitionsDown.content, markers->transitionsDown.length, limit) - candidateOffset;
         if (candidateLength > 0)
         {
             //one or several downwards candidates found as well!
-            dynIntArray_append(&upTransitionMarkers, maxIndex);
+            dynIntArray_append(&markers->markersUp, maxIndex);
             break;
         }
         //no downwards candidates found; increase offset and try again
@@ -427,222 +412,294 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
         maxDerr = 0.;
         for (int i = 0; i < candidateLength; i++)
         {
-            index = *(zeroTransitionsDown.content + candidateOffset + i);
-            derr = *(wave + index - 1) - *(wave + index);
+            index = *(markers->transitionsDown.content + candidateOffset + i);
+            derr = *(markers->wave + index - 1) - *(markers->wave + index);
             if (derr > maxDerr)
             {
                 maxDerr = derr;
                 maxIndex = index;
             }
         }
-        dynIntArray_append(&downTransitionMarkers, maxIndex);
+        dynIntArray_append(&markers->markersDown, maxIndex);
     }
-    //we now have an initial upTransitionMarker, followed by an initial downTransitionMarker within one expected wavelength.
-    //With this, we can jump-start the algorithm.
-    int lastPitch;
-    int lastDown;
-    int lastUp;
-    float error;
+}
+
+void findNextMarker(dynIntArray* primaryMarkers, dynIntArray* secondaryMarkers, dynIntArray* primaryTransitions, dynIntArray* secondaryTransitions, float* wave, int waveLength, cSample sample, engineCfg config)
+{
+    //up = primary
+    //down = secondary
+    int lastPrimary = *(primaryMarkers->content + primaryMarkers->length - 1);
+    int lastSecondary = *(secondaryMarkers->content + secondaryMarkers->length - 1);
+    int lastPitch = getLocalPitch(lastPrimary, sample, config);
+    float error = -1.; //-1 denotes an "infinite" error
     float newError;
     int transition;
-    int start;
-    int tmpTransition;
-    int localPitch;
-    dynIntArray validTransitions;
-    //loops until the entire sample is covered with markers
-    while (*(downTransitionMarkers.content + downTransitionMarkers.length - 1) < waveLength - (int)(*(sample.pitchDeltas + sample.config.pitchLength - 1) * config.DIOLastWinTolerance))//check for negative out-of-bounds
+    //calculate next upwards marker
+    //fallback "transition": if there are no actual transitions within the search range, this point will be used instead
+    if (primaryMarkers->length > 1)
     {
-        //convenience variables
-        lastUp = *(upTransitionMarkers.content + upTransitionMarkers.length - 1);
-        lastDown = *(downTransitionMarkers.content + downTransitionMarkers.length - 1);
-        lastPitch = getLocalPitch(lastUp, sample, config);
-        error = -1; //-1 denotes an "infinite" error
-        //new, reusable array for transition candidates
-        dynIntArray_init(&validTransitions);
-        //calculate next upwards marker
-        //fallback "transition": if there are no actual transitions within the search range, this point will be used instead
-        if (upTransitionMarkers.length > 1)
+        transition = lastPrimary + lastSecondary - *(secondaryMarkers->content + secondaryMarkers->length - 2);
+        if (transition <= lastSecondary)
         {
-            transition = lastUp + lastDown - *(downTransitionMarkers.content + downTransitionMarkers.length - 2);
-            if (transition <= lastDown)
+            transition = lastSecondary + ceildiv(lastSecondary - *(secondaryMarkers->content + secondaryMarkers->length - 2), 2);
+        }
+    }
+    else
+    {
+        transition = lastPrimary + lastPitch;
+        if (transition <= lastSecondary)
+        {
+            transition = lastSecondary + ceildiv(lastPitch, 2);
+        }
+    }
+    //ensure the transition is larger than the previous marker, even for very rapid decreases of the expected wavelength
+    //set up search range
+    int limit = lastPrimary + (1. - config.DIOTolerance) * lastPitch;
+    if (limit < lastSecondary)
+    {
+        limit = lastSecondary;
+    }
+    //start of the window of possible transitions
+    //check if limit is out of bounds (upper)
+    unsigned int start = findIndex(primaryTransitions->content, primaryTransitions->length, limit);
+    unsigned int end = start;
+    //end of the window of possible transitions
+    limit = lastPrimary + (1 + config.DIOTolerance) * lastPitch;
+    if (limit >= waveLength)
+    {
+        limit = waveLength - 1;
+    }
+    //check if limit is out of bounds (lower)
+    //load all transitions within the window into validTransitions
+    //TODO: replace validTransitions dynIntArray with pointer offsets on zeroTransitionsUp
+    while (end < primaryTransitions->length && *(primaryTransitions->content + end) <= limit)
+    {
+        end++;
+    }
+    for (int i = start; i < end; i++)
+    {
+        int tmpTransition = *(primaryTransitions->content + i);
+        int localPitch = getLocalPitch(tmpTransition, sample, config);
+        //correlate sample of one expected wavelength from current last upwards marker and candidate upwards marker
+        float* sample = (float*)malloc(localPitch * sizeof(float));
+        float* shiftedSample = (float*)malloc(localPitch * sizeof(float));
+        if (tmpTransition + localPitch >= waveLength)
+        {
+            if (localPitch > lastPrimary) {
+                continue;
+            }
+            for (int j = 0; j < localPitch; j++)
             {
-                transition = lastDown + ceildiv(lastDown - *(downTransitionMarkers.content + downTransitionMarkers.length - 2), 2);
+                *(sample + j) = *(wave + lastPrimary - localPitch + j);
+                *(shiftedSample + j) = *(wave + tmpTransition - localPitch + j);
             }
         }
         else
         {
-            transition = lastUp + lastPitch;
-            if (transition <= lastDown)
-            {
-                transition = lastDown + ceildiv(lastPitch, 2);
-            }
-        }
-        //ensure the transition is larger than the previous marker, even for very rapid decreases of the expected wavelength
-        //set up search range
-        limit = lastUp + (1. - config.DIOTolerance) * lastPitch;
-        if (limit < lastDown)
-        {
-            limit = lastDown;
-        }
-        //start of the window of possible transitions
-        //check if limit is out of bounds (upper)
-        start = findIndex(zeroTransitionsUp.content, zeroTransitionsUp.length, limit);
-        //end of the window of possible transitions
-        limit = lastUp + (1 + config.DIOTolerance) * lastPitch;
-        if (limit >= waveLength)
-        {
-            limit = waveLength - 1;
-        }
-        //check if limit is out of bounds (lower)
-        //load all transitions within the window into validTransitions
-        //TODO: replace validTransitions dynIntArray with pointer offsets on zeroTransitionsUp
-        while (start < zeroTransitionsUp.length && *(zeroTransitionsUp.content + start) <= limit)
-        {
-            dynIntArray_append(&validTransitions, *(zeroTransitionsUp.content + start));
-            start++;
-        }
-        for (int i = 0; i < validTransitions.length; i++)
-        {
-            tmpTransition = *(validTransitions.content + i);
-            localPitch = getLocalPitch(tmpTransition, sample, config);
-            //correlate sample of one expected wavelength from current last upwards marker and candidate upwards marker
-            float* sample = (float*) malloc(localPitch * sizeof(float));
-            float* shiftedSample = (float*) malloc(localPitch * sizeof(float));
-            if (tmpTransition + localPitch >= waveLength)
-            {
-                if (localPitch > lastUp) {
-                    continue;
-                }
-                for (int j = 0; j < localPitch; j++)
-                {
-                    *(sample + j) = *(wave + lastUp - localPitch + j);
-                    *(shiftedSample + j) = *(wave + tmpTransition - localPitch + j);
-                }
-            }
-            else
-            {
-                for (int j = 0; j < localPitch; j++)
-                {
-                    *(sample + j) = *(wave + lastUp + j);
-                    *(shiftedSample + j) = *(wave + tmpTransition + j);
-                }
-            }
-            //accept candidate with highest correlation
-            newError = 0.;
             for (int j = 0; j < localPitch; j++)
             {
-                newError += powf(*(sample + j) - *(shiftedSample + j), 2);
+                *(sample + j) = *(wave + lastPrimary + j);
+                *(shiftedSample + j) = *(wave + tmpTransition + j);
             }
-            newError *= fabsf((float)(tmpTransition - lastUp - localPitch)) / (float)localPitch + config.DIOBias2;
-            if (error > newError || error == -1)
-            {
-                transition = tmpTransition;
-                error = newError;
-            }
-            free(sample);
-            free(shiftedSample);
         }
-        dynIntArray_append(&upTransitionMarkers, transition);
-
-        //do the same again for the next downwards transition
-        lastUp = transition;
-        error = -1;
-        dynIntArray_dealloc(&validTransitions);
-        dynIntArray_init(&validTransitions);
-        transition = lastUp + lastDown - *(upTransitionMarkers.content + upTransitionMarkers.length - 2);
-        if (transition < lastUp)
+        //accept candidate with highest correlation
+        newError = 0.;
+        for (int j = 0; j < localPitch; j++)
         {
-            transition = lastUp + ceildiv(lastUp - *(upTransitionMarkers.content + upTransitionMarkers.length - 2), 2);
+            newError += powf(*(sample + j) - *(shiftedSample + j), 2);
         }
-        //check if transition is out of wave bounds (upper)
-        limit = lastDown + (1. - config.DIOTolerance) * lastPitch;
-        if (limit < lastUp)
+        newError *= fabsf((float)(tmpTransition - lastPrimary - localPitch)) / (float)localPitch + config.DIOBias2;
+        if (error > newError || error == -1)
         {
-            limit = lastUp;
+            transition = tmpTransition;
+            error = newError;
         }
-        start = findIndex(zeroTransitionsDown.content, zeroTransitionsDown.length, limit);
-        limit = lastDown + (1 + config.DIOTolerance) * lastPitch;
-        if (limit > waveLength)
-        {
-            limit = waveLength;
-        }
-        //check if limit is out of bounds (lower)
-        while (start < zeroTransitionsDown.length && *(zeroTransitionsDown.content + start) <= limit)
-        {
-            dynIntArray_append(&validTransitions, *(zeroTransitionsDown.content + start));
-            start++;
-        }
-        for (int i = 0; i < validTransitions.length; i++)
-        {
-            tmpTransition = *(validTransitions.content + i);
-            localPitch = getLocalPitch(tmpTransition, sample, config);
-            float* sample = (float*) malloc(localPitch * sizeof(float));
-            float* shiftedSample = (float*) malloc(localPitch * sizeof(float));
-            if (tmpTransition + localPitch >= waveLength)
-            {
-                if (localPitch > lastDown)
-                {
-                    continue;
-                }
-                for (int j = 0; j < localPitch; j++)
-                {
-                    *(sample + j) = *(wave + lastDown - localPitch + j);
-                    *(shiftedSample + j) = *(wave + tmpTransition - localPitch + j);
-                }
-            }
-            else
-            {
-                for (int j = 0; j < localPitch; j++)
-                {
-                    *(sample + j) = *(wave + lastDown + j);
-                    *(shiftedSample + j) = *(wave + tmpTransition + j);
-                }
-            }
-            newError = 0.;
-            for (int j = 0; j < localPitch; j++)
-            {
-                newError += powf(*(sample + j) - *(shiftedSample + j), 2);
-            }
-            newError *= fabsf((float)(tmpTransition - lastDown - localPitch)) / (float)localPitch + config.DIOBias2;
-            if (error > newError || error == -1)
-            {
-                transition = tmpTransition;
-                error = newError;
-            }
-            free(sample);
-            free(shiftedSample);
-        }
-        dynIntArray_append(&downTransitionMarkers, transition);
-        dynIntArray_dealloc(&validTransitions);
+        free(sample);
+        free(shiftedSample);
     }
-    dynIntArray_dealloc(&zeroTransitionsUp);
-    dynIntArray_dealloc(&zeroTransitionsDown);
+    dynIntArray_append(primaryMarkers, transition);
+}
+
+//calculates precise pitch markers for the padded waveform of a sample.
+//There is one marker for each vocal chord vibration, and they are pitch-synchronous.
+//The phase angle of each marker with respect to the f0 is constant, though its exact value is arbitrary and depends on the shape of the waveform.
+//This algorithm was originally based on DIO, but has since been adapted and heavily modified.
+PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLength, engineCfg config)
+{
+    PitchMarkerStruct markers;
+    markers.wave = wave;
+    markers.waveLength = waveLength;
+    //get all zero transitions and load them into dynamic arrays
+    dynIntArray_init(&markers.transitionsUp);
+    dynIntArray_init(&markers.transitionsDown);
+    for (int i = 2; i < waveLength; i++)
+    {
+        if ((*(wave + i - 1) < 0) && (*(wave + i) >= 0))
+        {
+            dynIntArray_append(&markers.transitionsUp, i);
+        }
+        if ((*(wave + i - 1) >= 0) && (*(wave + i) < 0))
+        {
+            dynIntArray_append(&markers.transitionsDown, i);
+        }
+    }
+    //check if there are enough transitions to continue
+    if (markers.transitionsUp.length <= 1 || markers.transitionsDown.length <= 1)
+    {
+        //not enough transitions; return two markers describing the approximate pitch
+        markers.markers = (double*) malloc (2 * sizeof(double));
+        *markers.markers = 0.;
+        *(markers.markers + 1) = (double)sample.config.pitch;
+        markers.markerLength = 2;
+        dynIntArray_dealloc(&markers.transitionsUp);
+        dynIntArray_dealloc(&markers.transitionsDown);
+        return markers;
+    }
+    seedPitchMarkers(&markers, sample, config);
+    //we now have an initial upTransitionMarker, followed by an initial downTransitionMarker within one expected wavelength.
+    //With this, we can jump-start the algorithm.
+    //loops until the entire sample is covered with markers
+    while (*(markers.markersDown.content + markers.markersDown.length - 1) < markers.waveLength - (int)(*(sample.pitchDeltas + sample.config.pitchLength - 1) * config.DIOLastWinTolerance))//check for negative out-of-bounds
+    {
+        findNextMarker(&markers.markersUp, &markers.markersDown, &markers.transitionsUp, &markers.transitionsDown, markers.wave, markers.waveLength, sample, config);
+        findNextMarker(&markers.markersDown, &markers.markersUp, &markers.transitionsDown, &markers.transitionsUp, markers.wave, markers.waveLength, sample, config);
+    }
+    dynIntArray_dealloc(&markers.transitionsUp);
+    dynIntArray_dealloc(&markers.transitionsDown);
 
     //truncate final markers, if necessary
-    if (*(downTransitionMarkers.content + downTransitionMarkers.length - 1) >= waveLength)
+    if (*(markers.markersDown.content + markers.markersDown.length - 1) >= waveLength)
     {
-        upTransitionMarkers.length--;
-        downTransitionMarkers.length--;
+        markers.markersUp.length--;
+        markers.markersDown.length--;
     }
     //check if sufficient markers have been found, and use fallback if that is not the case
-    if (upTransitionMarkers.length <= 1)
+    if (markers.markersUp.length <= 1)
     {
-        output.markers = (double*) malloc (2 * sizeof(double));
-        *output.markers = 0;
-        *(output.markers + 1) = sample.config.pitch;
-        output.markerLength = 2;
-        return output;
+        dynIntArray_dealloc(&markers.markersUp);
+        dynIntArray_dealloc(&markers.markersDown);
+        markers.markers = (double*) malloc (2 * sizeof(double));
+        *markers.markers = 0;
+        *(markers.markers + 1) = sample.config.pitch;
+        markers.markerLength = 2;
+        return markers;
     }
     //fill output struct with average between upwards and downwards marker for each wavelength
-    output.markerLength = upTransitionMarkers.length;
-    output.markers = (double*) malloc(output.markerLength * sizeof(double));
-    for (int i = 0; i < output.markerLength; i++)
+    markers.markerLength = markers.markersUp.length;
+    markers.markers = (double*) malloc(markers.markerLength * sizeof(double));
+    for (int i = 0; i < markers.markerLength; i++)
     {
-        *(output.markers + i) = (double)(*(upTransitionMarkers.content + i) + *(downTransitionMarkers.content + i)) / 2.;
+        *(markers.markers + i) = (double)(*(markers.markersUp.content + i) + *(markers.markersDown.content + i)) / 2.;
+        *(markers.markers + i) = floor(*(markers.markers + i));// Last resort option should 1-sample timing mismatch between wave and re-synthesized voiced signal not be resolvable otherwise
     }
-    dynIntArray_dealloc(&upTransitionMarkers);
-    dynIntArray_dealloc(&downTransitionMarkers);
-    return output;
+    dynIntArray_dealloc(&markers.markersUp);
+    dynIntArray_dealloc(&markers.markersDown);
+    return markers;
+}
+
+typedef struct
+{
+    float* evaluationPoints;
+    int offset;
+    float* offsetWindow;
+    int size;
+} evaluationPointsStruct;
+
+void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength, evaluationPointsStruct* eval, fftw_complex* result, PitchMarkerStruct markers, cSample sample, engineCfg config)
+{
+    float* window = wave + index * config.batchSize;
+    //get fitting segment of marker array
+    int localMarkerStart = findIndex_double(markers.markers, markers.markerLength, index * config.batchSize) - 1;
+    if (localMarkerStart < 0)
+    {
+        localMarkerStart = 0;
+    }
+    int localMarkerEnd = findIndex_double(markers.markers, markers.markerLength, index * config.batchSize + config.tripleBatchSize * config.filterBSMult);
+    if (localMarkerEnd >= markers.markerLength)
+    {
+        localMarkerEnd = markers.markerLength - 1;
+    }
+    float* offsetWindow = wave + (int)*(markers.markers + localMarkerStart);
+    int offsetWindowLength = (int)*(markers.markers + localMarkerEnd) - (int)floor(*(markers.markers + localMarkerStart)) + 1;
+    int windowOffset = index * config.batchSize - (int)floor(*(markers.markers + localMarkerStart));
+    int markerLength = localMarkerEnd - localMarkerStart + 1;
+    float* evaluationPoints;
+    //check if there are sufficient markers to perform pitch-synchronous analysis
+    if (markerLength <= 1)
+    {
+        evaluationPoints = (float*)malloc(windowLength * sizeof(float));
+        for (int j = 0; j < windowLength; j++)
+        {
+            *(evaluationPoints + j) = (float)j / sample.config.pitch;
+        }
+        offsetWindow = window;
+        offsetWindowLength = windowLength;
+        windowOffset = 0;
+        markerLength = 2;
+    }
+    else if (markerLength == 2)
+    {
+        evaluationPoints = (float*)malloc(offsetWindowLength * sizeof(float));
+        for (int j = 0; j < offsetWindowLength; j++)
+        {
+            *(evaluationPoints + j) = (j - windowOffset) / sample.config.pitch;
+        }
+        markerLength = 2;
+    }
+    else
+    {
+        //setup scales for interpolation to pitch-synchronous space
+        float* localMarkers = (float*)malloc(markerLength * sizeof(float));
+        float* markerSpace = (float*)malloc(markerLength * sizeof(float));
+        for (int j = 0; j < markerLength; j++)
+        {
+            *(localMarkers + j) = *(markers.markers + localMarkerStart + j) - (int)ceil(*(markers.markers + localMarkerStart));
+            *(markerSpace + j) = j;
+        }
+        float* windowSpace = (float*)malloc(offsetWindowLength * sizeof(float));
+        for (int j = 0; j < offsetWindowLength; j++)
+        {
+            *(windowSpace + j) = j;
+        }
+        //evaluation points contain pitch-synchronous coordinate for each waveform element in the offset window
+        evaluationPoints = extrap(localMarkers, markerSpace, windowSpace, markerLength, offsetWindowLength);
+        free(localMarkers);
+        free(markerSpace);
+        free(windowSpace);
+    }
+
+    nfft_plan combinedNUFFT;
+    nfft_init_1d(&combinedNUFFT, config.nHarmonics * 2, offsetWindowLength);
+    for (int i = 0; i < offsetWindowLength; i++)
+    {
+        combinedNUFFT.x[i] = fmodf(0.5 * *(evaluationPoints + i), 1.f);
+        if (combinedNUFFT.x[i] > 0.5)
+        {
+            combinedNUFFT.x[i] -= 1.;
+        }
+    }
+    if (combinedNUFFT.flags & PRE_ONE_PSI)
+    {
+        nfft_precompute_one_psi(&combinedNUFFT);
+    }
+    float* hannWindowInst = hannWindow(offsetWindowLength, 3. / (float)offsetWindowLength);
+    for (int i = 0; i < offsetWindowLength; i++)
+    {
+        (*(combinedNUFFT.f + i))[0] = *(offsetWindow + i) * *(hannWindowInst + i);
+        (*(combinedNUFFT.f + i))[1] = 0.;
+    }
+    free(hannWindowInst);
+    nfft_adjoint_1d(&combinedNUFFT);
+    for (int i = 0; i < config.nHarmonics + 2; i++)
+    {
+        (*(result + index * (config.nHarmonics + 2) + i))[0] = (*(combinedNUFFT.f_hat + i))[0];
+        (*(result + index * (config.nHarmonics + 2) + i))[1] = (*(combinedNUFFT.f_hat + i))[1];
+    }
+    nfft_finalize(&combinedNUFFT);
+    eval->evaluationPoints = evaluationPoints;
+    eval->offset = windowOffset;
+    eval->offsetWindow = offsetWindow;
+    eval->size = offsetWindowLength;
 }
 
 float calculatePhaseContinuity(float phaseA, float phaseB)
@@ -651,10 +708,171 @@ float calculatePhaseContinuity(float phaseA, float phaseB)
     return cos(phaseDiff / 2.);
 }
 
+void separateVoicedUnvoicedPostProc(fftw_complex* result, cSample sample, engineCfg config)
+{
+    for (int i = 0; i < sample.config.batches; i++)
+    {
+        for (int j = 0; j < config.halfHarmonics; j++)
+            //2j+1-th component contains unvoiced part of 2j-th component
+            //> 2j+1-th component calculated as mean(2j-1, 2j+1) + 2ndDerr as (2*2j - 2j-2 - 2j+2)/2
+            //> 2j+1 = (2j-1 + 2j+1 - 2j-2/2 - 2j+2/2 + 2j)/2
+            //store original abs in imaginary part
+        {
+            (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[1] = cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j + 1));
+        }
+        (*(result + i * (config.nHarmonics + 2) + 1))[0] =
+            (
+                (*(result + i * (config.nHarmonics + 2) + 1))[1] -
+                cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2)) / 2. +
+                cpxAbsd(*(result + i * (config.nHarmonics + 2))) / 2.
+                );
+        for (int j = 1; j < config.halfHarmonics - 1; j++)
+        {
+            (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[0] =
+                (
+                    (*(result + i * (config.nHarmonics + 2) + 2 * j - 1))[1] +
+                    (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[1] -
+                    cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j - 2)) / 2. -
+                    cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j + 2)) / 2. +
+                    cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j))
+                    ) / 2.;
+        }
+        int j = config.halfHarmonics - 1;
+        (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[0] =
+            (
+                (*(result + i * (config.nHarmonics + 2) + 2 * j - 1))[1] -
+                cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j - 2)) / 2. +
+                cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) / 2.
+                );
+    }
+    for (int i = 0; i < config.halfHarmonics; i++)
+    {
+        (*(result + 2 * i + 1))[1] =
+            (
+                (*(result + 2 * i + 1))[0] * 2. +
+                (*(result + (config.nHarmonics + 2) + 2 * i + 1))[0]
+                ) / 3.;
+        for (int j = 1; j < sample.config.batches - 1; j++)
+        {
+            (*(result + j * (config.nHarmonics + 2) + 2 * i + 1))[1] =
+                (
+                    (*(result + j * (config.nHarmonics + 2) + 2 * i + 1))[0] * 2. +
+                    (*(result + (j - 1) * (config.nHarmonics + 2) + 2 * i + 1))[0] +
+                    (*(result + (j + 1) * (config.nHarmonics + 2) + 2 * i + 1))[0]
+                    ) / 4.;
+
+        }
+        (*(result + (sample.config.batches - 1) * (config.nHarmonics + 2) + 2 * i + 1))[1] =
+            (
+                (*(result + (sample.config.batches - 1) * (config.nHarmonics + 2) + 2 * i + 1))[0] * 2. +
+                (*(result + (sample.config.batches - 2) * (config.nHarmonics + 2) + 2 * i + 1))[0]
+                ) / 3.;
+    }
+}
+
+void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex* result, float* wave, float* unvoicedSignal, float* hannWindowInst, cSample sample, engineCfg config)
+{
+    for (int i = 0; i < sample.config.batches; i++)
+    {
+        float principalPhase = cpxArgd(*(result + i * (config.nHarmonics + 2) + config.nHarmonics - 2));
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+            float reducer = fmaxf((*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[0], (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[1]) * sample.config.voicedThrh;
+            *(sample.specharm + i * config.frameSize + config.halfHarmonics - 1 - j) = fmaxf(cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - reducer, 0.) * 2.;
+            *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - (float)(config.halfHarmonics - j - 1) * principalPhase;
+            *(sample.specharm + i * config.frameSize + config.halfHarmonics) = 0.;
+            *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = fmodf(fmodf(*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j), 2. * pi) + 2. * pi, 2. * pi);
+            if (*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) > pi)
+            {
+                *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) -= 2. * pi;
+            }
+        }
+        nfft_plan inverseNUFFT;
+        nfft_init_1d(&inverseNUFFT, config.nHarmonics, config.tripleBatchSize * config.filterBSMult);
+        float preIncrement = *((*(evals + i)).evaluationPoints + 1) - *((*(evals + i)).evaluationPoints);
+        for (int j = 0; j < -(*(evals + i)).offset; j++)
+        {
+            inverseNUFFT.x[j] = fmodf((j - (*(evals + i)).offset) * preIncrement + (*(evals + i)).offset, 1.f); //added (*(evals + i)).offset) because j mod 1 = 0 and it prevents value from going negative
+            if (inverseNUFFT.x[j] > 0.5)
+            {
+                inverseNUFFT.x[j] -= 1.;
+            }
+        }
+        int lowerLimit;
+        if ((*(evals + i)).offset < 0)
+        {
+            lowerLimit = -(*(evals + i)).offset;
+        }
+        else
+        {
+            lowerLimit = 0;
+        }
+        int upperLimit;
+        if (-(*(evals + i)).offset + (*(evals + i)).size < config.tripleBatchSize * config.filterBSMult)
+        {
+            upperLimit = -(*(evals + i)).offset + (*(evals + i)).size;
+        }
+        else
+        {
+            upperLimit = config.tripleBatchSize * config.filterBSMult;
+        }
+        for (int j = lowerLimit; j < upperLimit; j++)
+        {
+            inverseNUFFT.x[j] = fmodf(*((*(evals + i)).evaluationPoints + (*(evals + i)).offset + j), 1.f);
+            if (inverseNUFFT.x[j] > 0.5)
+            {
+                inverseNUFFT.x[j] -= 1.;
+            }
+        }
+        float postIncrement = *((*(evals + i)).evaluationPoints + (*(evals + i)).size - 1) - *((*(evals + i)).evaluationPoints + (*(evals + i)).size - 2);
+        for (int j = -(*(evals + i)).offset + (*(evals + i)).size; j < config.tripleBatchSize * config.filterBSMult; j++)
+        {
+            inverseNUFFT.x[j] = fmodf(j * postIncrement, 1.f);
+            if (inverseNUFFT.x[j] > 0.5)
+            {
+                inverseNUFFT.x[j] -= 1.;
+            }
+        }
+        free((*(evals + i)).evaluationPoints);
+        if (inverseNUFFT.flags & PRE_ONE_PSI)
+        {
+            nfft_precompute_one_psi(&inverseNUFFT);
+        }
+        for (int j = 0; j < config.halfHarmonics - 1; j++)
+        {
+            inverseNUFFT.f_hat[config.nHarmonics - j - 1][0] = cos(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j + 2))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j + 2));
+            inverseNUFFT.f_hat[config.nHarmonics - j - 1][1] = sin(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j + 2))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j + 2)) * -1.;
+        }
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+            inverseNUFFT.f_hat[j][0] = cos(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
+            inverseNUFFT.f_hat[j][1] = sin(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
+        }
+        nfft_trafo_1d(&inverseNUFFT);
+        for (int j = 0; j < config.tripleBatchSize * config.filterBSMult; j++)
+        {
+            *(unvoicedSignal + i * config.batchSize + j) += (*(wave + i * config.batchSize + j) - inverseNUFFT.f[j][0]) * *(hannWindowInst + j);
+        }
+        nfft_finalize(&inverseNUFFT);
+    }
+}
+
 //separates voiced and unvoiced excitation of a sample through pitch-synchronous analysis.
-//Implicitely requires pitch data to be included in the sample to work correctly.
+//requires pitch data to be included in the sample struct to work correctly.
 void separateVoicedUnvoiced(cSample sample, engineCfg config)
 {
+    //separation calculations are only necessary if the sample is voiced
+    if (sample.config.isVoiced == 0)
+    {
+        for (int i = 0; i < sample.config.batches; i++)
+        {
+            for (int j = 0; j < config.nHarmonics + 2; j++)
+            {
+                *(sample.specharm + i * config.frameSize + j) = 0.;
+            }
+        }
+        stft_inpl(sample.waveform, sample.config.length, config, sample.excitation);
+    }
     // extended waveform buffer aligned with batch size
     int padLength = config.halfTripleBatchSize * config.filterBSMult;
     int waveLength = sample.config.length + 2 * padLength;
@@ -664,9 +882,8 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     // fill input buffer, extend data with reflection padding on both sides
     for (int i = 0; i < padLength; i++)
     {
-        *(wave + i) = *sample.waveform;
+        *(wave + padLength - 1 - i) = *(sample.waveform + i);
     }
-    #pragma omp parallel for
     for (int i = 0; i < sample.config.length; i++)
     {
         *(wave + padLength + i) = *(sample.waveform + i);
@@ -679,232 +896,24 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     {
         *(unvoicedSignal + i) = 0.f;
     }
-    //further variable definitions for later use
-    float* hannWindow = (float*)malloc(windowLength * sizeof(float));
-    for (int i = 0; i < windowLength; i++) {
-        *(hannWindow + i) = pow(sin((pi / windowLength) * i), 2.) * 2. / (3. * config.filterBSMult);
-    }
-    int batches = sample.config.batches;
     //Get DIO Pitch markers
     PitchMarkerStruct markers = calculatePitchMarkers(sample, wave, waveLength, config);
-    float* phases = (float*)malloc(config.halfHarmonics * sizeof(float));
-    for (int i = 0; i < config.halfHarmonics; i++)
+    fftw_complex* combinedCoeffs = (fftw_complex*)malloc(sample.config.batches * (config.nHarmonics + 2) * sizeof(fftw_complex));
+    evaluationPointsStruct* evals = (evaluationPointsStruct*)malloc(sample.config.batches * sizeof(evaluationPointsStruct));
+    for (int i = 0; i < sample.config.batches; i++)
     {
-        *(phases + i) = 1.;
+        separateVoicedUnvoicedSingleWindow(i, wave, windowLength, evals + i, combinedCoeffs, markers, sample, config);
     }
-    float* continuity = (float*)malloc(config.halfHarmonics * sizeof(float));
-    for (int i = 0; i < config.halfHarmonics; i++)
-    {
-        *(continuity + i) = 1.;
-    }
-    float* noiseCompensation = (float*)malloc(config.halfHarmonics * sizeof(float));
-    for (int i = 0; i < config.halfHarmonics; i++)
-    {
-        *(noiseCompensation + i) = 0.;
-    }
-    //Loop over each window
-    for (int i = 0; i < batches; i++)
-    {
-        //separation calculations are only necessary if the sample is voiced
-        if (sample.config.isVoiced == 0)
-        {
-            for (int j = 0; j < config.nHarmonics + 2; j++)
-            {
-                *(sample.specharm + i * config.frameSize + j) = 0.;
-            }
-            continue;
-        }
-        float* window = wave + i * config.batchSize;
-        //get fitting segment of marker array
-        int localMarkerStart = findIndex_double(markers.markers, markers.markerLength, i * config.batchSize) - 1;
-        if (localMarkerStart < 0)
-        {
-            localMarkerStart = 0;
-        }
-        int localMarkerEnd = findIndex_double(markers.markers, markers.markerLength, i * config.batchSize + config.tripleBatchSize * config.filterBSMult);
-        if (localMarkerEnd >= markers.markerLength)
-        {
-            localMarkerEnd = markers.markerLength - 1;
-        }
-        float* offsetWindow = wave + (int)*(markers.markers + localMarkerStart);
-        int offsetWindowLength = (int)*(markers.markers + localMarkerEnd) - (int)ceil(*(markers.markers + localMarkerStart)) + 1;
-        int windowOffset = i * config.batchSize - (int)ceil(*(markers.markers + localMarkerStart));
-        int markerLength = localMarkerEnd - localMarkerStart + 1;
-        int noiseWindowLength;
-        int noiseMarkerLength;
-        int noiseMarkerEnd;
-        if (markerLength % 2 == 1)
-        {
-            noiseWindowLength = offsetWindowLength;
-            noiseMarkerLength = markerLength;
-            noiseMarkerEnd = localMarkerEnd;
-        }
-        else
-        {
-            noiseWindowLength = (int)*(markers.markers + localMarkerEnd - 1) - (int)ceil(*(markers.markers + localMarkerStart)) + 1;
-            noiseMarkerLength = markerLength - 1;
-            noiseMarkerEnd = localMarkerEnd - 1;
-        }
-        fftwf_complex* harmFunction = (fftwf_complex*)malloc(config.halfHarmonics * sizeof(fftwf_complex));
-        fftwf_complex* noiseFunction = (fftwf_complex*)malloc(config.halfHarmonics * sizeof(fftwf_complex));
-        float newContinuity;
-        float* unvoicedSignalPart = (float*)malloc(windowLength * sizeof(float));
-        float* evaluationPoints;
-        //check if there are sufficient markers to perform pitch-synchronous analysis
-        if (markerLength <= 2)
-        {
-            evaluationPoints = (float*)malloc(offsetWindowLength * sizeof(float));
-            for (int j = 0; j < offsetWindowLength; j++)
-            {
-                *(evaluationPoints + j) = (j - windowOffset) / sample.config.pitch;
-            }
-            markerLength = 2;
-        }
-        else
-        {
-            //setup scales for interpolation to pitch-synchronous space
-            float* localMarkers = (float*)malloc(markerLength * sizeof(float));
-            float* markerSpace = (float*)malloc(markerLength * sizeof(float));
-            for (int j = 0; j < markerLength; j++)
-            {
-                *(localMarkers + j) = *(markers.markers + localMarkerStart + j) - (int)ceil(*(markers.markers + localMarkerStart));
-                *(markerSpace + j) = j;
-            }
-            float* windowSpace = (float*)malloc(offsetWindowLength * sizeof(float));
-            for (int j = 0; j < offsetWindowLength; j++)
-            {
-                *(windowSpace + j) = j;
-            }
-            //perform interpolation and get pitch-synchronous version of waveform
-            evaluationPoints = extrap(localMarkers, markerSpace, windowSpace, markerLength, offsetWindowLength);
-            free(localMarkers);
-            free(markerSpace);
-            free(windowSpace);
-        }
-        float multiplier;
-        for (int j = 0; j < config.halfHarmonics; j++)
-        {
-            (*(harmFunction + j))[0] = 0.;
-            (*(harmFunction + j))[1] = 0.;
-            (*(noiseFunction + j))[0] = 0.;
-            (*(noiseFunction + j))[1] = 0.;
-            for (int k = 0; k < offsetWindowLength; k++)
-            {
-                if (k == 0)
-                {
-                    multiplier = (*(evaluationPoints + 1) - *(evaluationPoints)) / (markerLength - 1);
-                    if (ceil(*(markers.markers + localMarkerStart)) != *(markers.markers + localMarkerStart))
-                    {
-                        multiplier += *(evaluationPoints) / (markerLength - 1) * 2.;
-                    }
-                }
-                else if (k == offsetWindowLength - 1)
-                {
-                    multiplier = (*(evaluationPoints + offsetWindowLength - 1) - *(evaluationPoints + offsetWindowLength - 2)) / (markerLength - 1);
-                    if (floor(*(markers.markers + localMarkerEnd)) != *(markers.markers + localMarkerEnd))
-                    {
-                        multiplier += (markerLength - 1 - *(evaluationPoints + offsetWindowLength - 1)) / (markerLength - 1) * 2.;
-                    }
-                }
-                else
-                {
-                    multiplier = (*(evaluationPoints + k + 1) - *(evaluationPoints + k - 1)) / (markerLength - 1);
-                }
-                (*(harmFunction + j))[0] += *(offsetWindow + k) * cos(-2. * pi * j * *(evaluationPoints + k)) * multiplier;
-                (*(harmFunction + j))[1] += *(offsetWindow + k) * sin(-2. * pi * j * *(evaluationPoints + k)) * multiplier;
-            }
-            for (int k = 0; k < noiseWindowLength; k++)
-            {
-                if (k == 0)
-                {
-                    multiplier = (*(evaluationPoints + 1) - *(evaluationPoints)) / (noiseMarkerLength - 1);
-                    if (ceil(*(markers.markers + localMarkerStart)) != *(markers.markers + localMarkerStart))
-                    {
-                        multiplier += *(evaluationPoints) / (noiseMarkerLength - 1) * 2.;
-                    }
-                }
-                else if (k == noiseWindowLength - 1)
-                {
-                    multiplier = (*(evaluationPoints + noiseWindowLength - 1) - *(evaluationPoints + noiseWindowLength - 2)) / (noiseMarkerLength - 1);
-                    if (floor(*(markers.markers + noiseMarkerEnd)) != *(markers.markers + noiseMarkerEnd))
-                    {
-                        multiplier += (noiseMarkerLength - 1 - *(evaluationPoints + noiseWindowLength - 1)) / (noiseMarkerLength - 1) * 2.;
-                    }
-                }
-                else
-                {
-                    multiplier = (*(evaluationPoints + k + 1) - *(evaluationPoints + k - 1)) / (noiseMarkerLength - 1);
-                }
-                (*(noiseFunction + j))[0] += *(offsetWindow + k) * cos(-2. * pi * ((float)j + 0.5) * *(evaluationPoints + k)) * multiplier;
-                (*(noiseFunction + j))[1] += *(offsetWindow + k) * sin(-2. * pi * ((float)j + 0.5) * *(evaluationPoints + k)) * multiplier;
-            }
-            if (j > 2)
-            {
-                *(noiseCompensation + j) = fmax((cpxAbsf(*(noiseFunction + j)) + cpxAbsf(*(noiseFunction + j - 1))) / 2., 0.8 * *(noiseCompensation + j) + 0.2 * (cpxAbsf(*(noiseFunction + j)) + cpxAbsf(*(noiseFunction + j - 1))) / 2.);
-                newContinuity = calculatePhaseContinuity(cpxArgf(*(harmFunction + j)), *(phases + j));
-            }
-            else
-            {
-                newContinuity = 1.;
-            }
-            *(sample.specharm + i * config.frameSize + j) = fmax(cpxAbsf(*(harmFunction + j)) * *(continuity + j) * newContinuity - *(noiseCompensation + j), 0.);
-            if (j > 0)
-            {
-                *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = cpxArgf(*(harmFunction + j));
-            }
-            else
-            {
-                *(sample.specharm + i * config.frameSize + config.halfHarmonics + j) = 0.;
-            }
-            *(phases + j) = cpxArgf(*(harmFunction + j));
-            *(continuity + j) = newContinuity;
-        }
-        for (int j = 0; j < windowLength; j++)
-        {
-            *(unvoicedSignalPart + j) = 0.;
-            for (int k = 0; k < config.halfHarmonics; k++)
-            {
-                if (windowOffset + j < 0)
-                {
-                    float extrapolatedPoint = *evaluationPoints + (windowOffset + j) * (*(evaluationPoints + 1) - *evaluationPoints);
-                    *(unvoicedSignalPart + j) += *(sample.specharm + i * config.frameSize + k) * cos(*(sample.specharm + i * config.frameSize + config.halfHarmonics + k) + 2. * pi * k * extrapolatedPoint);
-                }
-                else if (windowOffset + j >= offsetWindowLength)
-                {
-                    float extrapolatedPoint = *(evaluationPoints + offsetWindowLength - 1) + (windowOffset + j - offsetWindowLength + 1) * (*(evaluationPoints + offsetWindowLength - 1) - *(evaluationPoints + offsetWindowLength - 2));
-                    *(unvoicedSignalPart + j) += *(sample.specharm + i * config.frameSize + k) * cos(*(sample.specharm + i * config.frameSize + config.halfHarmonics + k) + 2. * pi * k * extrapolatedPoint);
-                }
-                else
-                {
-                    *(unvoicedSignalPart + j) += *(sample.specharm + i * config.frameSize + k) * cos(*(sample.specharm + i * config.frameSize + config.halfHarmonics + k) + 2. * pi * k * *(evaluationPoints + windowOffset + j));
-                }
-            }
-            *(unvoicedSignalPart + j) = *(unvoicedSignalPart + j)  - *(window + j);
-        }
-        free(evaluationPoints);
-        free(harmFunction);
-        free(noiseFunction);
-        for (int j = 0; j < windowLength; j++)
-        {
-            *(unvoicedSignal + i * config.batchSize + j) += *(hannWindow + j) * *(unvoicedSignalPart + j);
-        }
-        free(unvoicedSignalPart);
-    }
-    free(phases);
-    free(continuity);
-    free(noiseCompensation);
     free(markers.markers);
-    free(hannWindow);
-    if (sample.config.isVoiced == 0)
-    {
-        stft_inpl(sample.waveform, sample.config.length, config, sample.excitation);
-    }
-    else
-    {
-        stft_inpl(unvoicedSignal + padLength, sample.config.length, config, sample.excitation);
-    }
-    free(unvoicedSignal);
+    separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
+    float* hannWindowInst = hannWindow(windowLength, 1. / 3.);
+    separateVoicedUnvoicedFinalize(evals, combinedCoeffs, wave, unvoicedSignal, hannWindowInst, sample, config);
     free(wave);
+    free(combinedCoeffs);
+    free(evals);
+    free(hannWindowInst);
+    stft_inpl(unvoicedSignal + padLength, sample.config.length, config, sample.excitation);
+    free(unvoicedSignal);
 }
 
 //averages all harmonic amplitudes and spectra, stores the result in the avgSpecharm field of the sample, and overwrites the specharms with their difference from the average.
@@ -932,7 +941,6 @@ void averageSpectra(cSample sample, engineCfg config)
     {
         *(sample.avgSpecharm + i) /= sample.config.batches;
     }
-    #pragma omp parallel for
     for (int i = 0; i < sample.config.batches; i++)
     {
         for (int j = 0; j < config.halfHarmonics; j++)
@@ -944,43 +952,47 @@ void averageSpectra(cSample sample, engineCfg config)
             *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) -= *(sample.avgSpecharm + config.halfHarmonics + j);
         }
     }
-    //dampen outliers if required
-    if (sample.config.useVariance > 0)
+}
+
+void dampenOutliers(cSample sample, engineCfg config)
+{
+    float variance = 0.;
+    float* variances = (float*)malloc(sample.config.batches * sizeof(float));
+    for (int i = 0; i < sample.config.batches; i++)
     {
-        float variance = 0.;
-        float* variances = (float*)malloc(sample.config.batches * sizeof(float));
-        for (int i = 0; i < sample.config.batches; i++)
-        {
-            *(variances + i) = 0.;
-        }
-        for (int i = 0; i < sample.config.batches; i++) {
-            for (int j = 0; j < config.halfHarmonics; j++) {
-                *(variances + i) += pow(*(sample.specharm + i * config.frameSize + j), 2);
-            }
-            for (int j = 0; j < config.halfTripleBatchSize + 1; j++) {
-                *(variances + i) += pow(*(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j), 2);
-            }
-        }
-        for (int i = 0; i < sample.config.batches; i++) {
-            *(variances + i) = sqrtf(*(variances + i));
-            variance += *(variances + i);
-        }
-        variance /= sample.config.batches;
-        for (int i = 0; i < sample.config.batches; i++) {
-            *(variances + i) = *(variances + i) / variance - 1;
-        }
-        for (int i = 0; i < sample.config.batches; i++) {
-            if (*(variances + i) > 1) {
-                for (int j = 0; j < config.halfHarmonics; j++) {
-                    *(sample.specharm + i * config.frameSize + j) /= *(variances + i);
-                }
-                for (int j = config.nHarmonics + 2; j < config.halfTripleBatchSize + 1; j++) {
-                    *(sample.specharm + i * config.frameSize + j) /= *(variances + i);
-                }
-            }
-        }
-        free(variances);
+        *(variances + i) = 0.;
     }
+    for (int i = 0; i < sample.config.batches; i++) {
+        for (int j = 0; j < config.halfHarmonics; j++) {
+            *(variances + i) += pow(*(sample.specharm + i * config.frameSize + j), 2);
+        }
+        for (int j = 0; j < config.halfTripleBatchSize + 1; j++) {
+            *(variances + i) += pow(*(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j), 2);
+        }
+    }
+    for (int i = 0; i < sample.config.batches; i++) {
+        *(variances + i) = sqrtf(*(variances + i));
+        variance += *(variances + i);
+    }
+    variance /= sample.config.batches;
+    for (int i = 0; i < sample.config.batches; i++) {
+        *(variances + i) = *(variances + i) / variance - 1;
+    }
+    for (int i = 0; i < sample.config.batches; i++) {
+        if (*(variances + i) > 1) {
+            for (int j = 0; j < config.halfHarmonics; j++) {
+                *(sample.specharm + i * config.frameSize + j) /= *(variances + i);
+            }
+            for (int j = config.nHarmonics + 2; j < config.halfTripleBatchSize + 1; j++) {
+                *(sample.specharm + i * config.frameSize + j) /= *(variances + i);
+            }
+        }
+    }
+    free(variances);
+}
+
+void applySpectrumToExcitation(cSample sample, engineCfg config)
+{
     for (int i = 0; i < sample.config.batches; i++)
     {
         for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
@@ -992,4 +1004,14 @@ void averageSpectra(cSample sample, engineCfg config)
             *(sample.excitation + (i + sample.config.batches) * (config.halfTripleBatchSize + 1) + j) *= 4. / config.tripleBatchSize;
         }
     }
+}
+
+void finalizeSample(cSample sample, engineCfg config)
+{
+    averageSpectra(sample, config);
+    if (sample.config.useVariance > 0)
+    {
+        dampenOutliers(sample, config);
+    }
+    applySpectrumToExcitation(sample, config);
 }

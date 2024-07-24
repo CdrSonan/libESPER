@@ -51,10 +51,17 @@ float* hPoly(float* input, int length)
 //all input arrays are expected to be sorted.
 float* interp(float* x, float* y, float* xs, int len, int lenxs)
 {
-    if (*xs < *x) printf("interp too low! %f %f\n", *xs, *x);
-    if (*(xs + lenxs - 1) > *(x + len - 1)) printf("interp too high! %f %f\n", *(xs + lenxs - 1), *(x + len - 1));
+    float* ys = (float*) malloc(lenxs * sizeof(float));
+    interp_inpl(x, y, xs, len, lenxs, ys);
+    return ys;
+}
+
+void interp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
+{
+    if (*xs < *x) printf("interpolation input too low! %f %f\n", *xs, *x);
+    if (*(xs + lenxs - 1) > *(x + len - 1)) printf("interpolation input too high! %f %f\n", *(xs + lenxs - 1), *(x + len - 1));
     //fill old space derivative array
-    float* m = (float*) malloc(len * sizeof(float));
+    float* m = (float*)malloc(len * sizeof(float));
     for (int i = 0; i < (len - 1); i++)
     {
         *(m + i + 1) = (*(y + i + 1) - *(y + i)) / (*(x + i + 1) - *(x + i));
@@ -65,7 +72,7 @@ float* interp(float* x, float* y, float* xs, int len, int lenxs)
         *(m + i) = (*(m + i) + *(m + i + 1)) / 2.;
     }
     //get correct indices for xs
-    float* idxs = (float*) malloc(lenxs * sizeof(float));
+    float* idxs = (float*)malloc(lenxs * sizeof(float));
     int i = 0; //iterator for xs
     int j = 0; //iterator for x
     while ((j < len - 1) && (i < lenxs)) //since both x and xs are sorted, iterating linearly is O(n), compared to O(n log n) for repeated binary search
@@ -86,8 +93,8 @@ float* interp(float* x, float* y, float* xs, int len, int lenxs)
         i++;
     }
     //compute new space derivatives and hermite polynomial base
-    float* dx = (float*) malloc(lenxs * sizeof(float));
-    float* hh = (float*) malloc(lenxs * sizeof(float));
+    float* dx = (float*)malloc(lenxs * sizeof(float));
+    float* hh = (float*)malloc(lenxs * sizeof(float));
     int offset;
     for (int i = 0; i < lenxs; i++)
     {
@@ -98,7 +105,6 @@ float* interp(float* x, float* y, float* xs, int len, int lenxs)
     float* h = hPoly(hh, lenxs);
     free(hh);
     //compute final data
-    float* ys = (float*) malloc(lenxs * sizeof(float));
     for (int i = 0; i < lenxs; i++)
     {
         offset = *(idxs + i);
@@ -108,7 +114,6 @@ float* interp(float* x, float* y, float* xs, int len, int lenxs)
     free(idxs);
     free(dx);
     free(h);
-    return ys;
 }
 
 //wrapper around interp() that supports basic extrapolation, instead of having undefined behavior for xs values outside the range of x
@@ -173,8 +178,7 @@ float* extrap(float* x, float* y, float* xs, int len, int lenxs)
         }
     }
     //perform interpolation
-    float* ys = (float*) malloc(lenxs * sizeof(float));
-    ys = interp(xnew, ynew, xs, newLen, lenxs);
+    float* ys = interp(xnew, ynew, xs, newLen, lenxs);
     //free buffers if necessary
     if (freeNew == 1)
     {
@@ -184,15 +188,93 @@ float* extrap(float* x, float* y, float* xs, int len, int lenxs)
     return ys;
 }
 
+void extrap_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
+{
+    //perform extrapolation
+    float largeY = *(y + len - 1) + (*(y + len - 1) - *(y + len - 2)) * (*(xs + lenxs - 1) - *(x + len - 1)) / (*(x + len - 1) - *(x + len - 2));
+    float smallY = *y - (*(y + 1) - *y) * (*x - *xs) / (*(x + 1) - *x);
+    float* xnew;
+    float* ynew;
+    //flag indicating whether the xnew and ynew buffers need to be de-allocated
+    int freeNew = 1;
+    int newLen = len;
+    if ((*xs < *x) && (*(xs + lenxs - 1) > *(x + len - 1))) //both append and prepend required
+    {
+        xnew = (float*)malloc((len + 2) * sizeof(float));
+        ynew = (float*)malloc((len + 2) * sizeof(float));
+        for (int i = 0; i < len; i++)
+        {
+            *(xnew + i + 1) = *(x + i);
+            *(ynew + i + 1) = *(y + i);
+        }
+        *xnew = *xs;
+        *ynew = smallY;
+        *(xnew + len + 1) = *(xs + lenxs - 1);
+        *(ynew + len + 1) = largeY;
+        newLen += 2;
+    }
+    else
+    {
+        if (*xs < *x) //only prepend required
+        {
+            xnew = (float*)malloc((len + 1) * sizeof(float));
+            ynew = (float*)malloc((len + 1) * sizeof(float));
+            for (int i = 0; i < len; i++)
+            {
+                *(xnew + i + 1) = *(x + i);
+                *(ynew + i + 1) = *(y + i);
+            }
+            *xnew = *xs;
+            *ynew = smallY;
+            newLen++;
+        }
+        else if (*(xs + lenxs - 1) > *(x + len - 1)) //only append required
+        {
+            xnew = (float*)malloc((len + 1) * sizeof(float));
+            ynew = (float*)malloc((len + 1) * sizeof(float));
+            for (int i = 0; i < len; i++)
+            {
+                *(xnew + i) = *(x + i);
+                *(ynew + i) = *(y + i);
+            }
+            *(xnew + len) = *(xs + lenxs - 1);
+            *(ynew + len) = largeY;
+            newLen++;
+        }
+        else //neither append nor prepend required. Just call interp() without allocating a new buffer or adding extrapolated elements
+        {
+            xnew = x;
+            ynew = y;
+            freeNew = 0;
+        }
+    }
+    //perform interpolation
+    interp_inpl(xnew, ynew, xs, newLen, lenxs, ys);
+    //free buffers if necessary
+    if (freeNew == 1)
+    {
+        free(xnew);
+        free(ynew);
+    }
+}
+
 float* circInterp(float* x, float* y, float* xs, int len, int lenxs)
 {
-    int idx = 0;
-    int idxs = 0;
     float* ys = (float*)malloc(lenxs * sizeof(float));
     float factor;
     float a;
     float b;
-    printf("slerp params: %i, %f, %f, %i, %f, %f\n", len, *x, *(x + len - 1), lenxs, *xs, *(xs + lenxs - 1));
+    circInterp_inpl(x, y, xs, len, lenxs, ys);
+    return ys;
+}
+
+void circInterp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
+{
+    int idx = 0;
+    int idxs = 0;
+    float factor;
+    float a;
+    float b;
     while (idxs < lenxs)
     {
         while ((*(xs + idxs) > *(x + idx + 1)) && (idx < (len - 1)))
@@ -227,7 +309,6 @@ float* circInterp(float* x, float* y, float* xs, int len, int lenxs)
         }
         idxs++;
     }
-    return ys;
 }
 
 //batched interpolation of two phases based on a factor.

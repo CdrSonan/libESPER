@@ -216,45 +216,33 @@ float* istft_hann(fftwf_complex* input, int batches, int targetLength, engineCfg
 
 void istft_hann_inpl(fftwf_complex* input, int batches, int targetLength, engineCfg config, float* output)
 {
-    printf("istft_hann_inpl called with params: %p %i %i %p", input, batches, targetLength, output);
     // fft setup
     // extended input buffer aligned with batch size
     float* mainBuffer = (float*)malloc(config.batchSize * (batches + 3) * sizeof(float));
-    printf("main buffer alloc %p\n", mainBuffer);
-//#pragma omp parallel for
+    #pragma omp parallel for
     for (int i = 0; i < config.batchSize * (batches + 3); i++)
     {
         *(mainBuffer + i) = 0.;
     }
-    printf("main buffer init\n");
     // smaller buffer for individual fft result
     float* buffer = (float*)malloc(config.tripleBatchSize * sizeof(float));
-    printf("buffer alloc %p\n", buffer);
     for (int i = 0; i < batches; i++)
     {
         // perform ffts
-        printf("plan 1 ");
         fftwf_plan plan = fftwf_plan_dft_c2r_1d(config.tripleBatchSize, input + i * (config.halfTripleBatchSize + 1), buffer, FFTW_ESTIMATE);
-        printf("plan 2 ");
         fftwf_execute(plan);
-        printf("plan 3 ");
         fftwf_destroy_plan(plan);
-        printf("plan 4\n");
         for (int j = 0; j < config.tripleBatchSize; j++)
         {
             // fill result into main buffer with overlap
             *(mainBuffer + i * config.batchSize + j) += *(buffer + j) * pow(sin(pi * j / config.tripleBatchSize), 2);
         }
-        printf("copied to main\n");
     }
     free(buffer);
-    printf("copy to output\n");
-//#pragma omp parallel for
     for (int i = 0; i < targetLength; i++)
     {
         *(output + i) = *(mainBuffer + config.halfTripleBatchSize + i) / 3.;// / config.tripleBatchSize;
     }
-    printf("adjust output edges\n");
     for (int i = 0; i < config.batchSize / 2; i++) {
         *(output + i) /= 1. - pow(sin(pi * (i + 2.5 * config.batchSize) / config.tripleBatchSize), 2) / 5.;
         *(output + targetLength - 1 - i) /= 1. - pow(sin(pi * (i + 2.5 * config.batchSize) / config.tripleBatchSize), 2) / 5.;
