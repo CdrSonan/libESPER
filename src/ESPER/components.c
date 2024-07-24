@@ -22,7 +22,8 @@
 float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
 {
     //scale cutoff frequency based on window size
-    int specWidth = (int)((float)config.tripleBatchSize / (float)(sample.config.specWidth + 3) / fmax(sample.config.expectedPitch / 440., 1.));
+    //legacy method: int specWidth = (int)((float)config.tripleBatchSize / (float)(sample.config.specWidth + 3) / fmax(sample.config.expectedPitch / 440., 1.));
+    int specWidth = (int)((float)config.sampleRate / 6. / (float)sample.config.expectedPitch);
     float* spectra = (float*) malloc(sample.config.batches * (config.halfTripleBatchSize + 1) * sizeof(float));
     //define fourier-space windowing function for lowpass filter
     float* cutoffWindow = (float*) malloc((config.halfTripleBatchSize / 2 + 1) * sizeof(float));
@@ -32,7 +33,7 @@ float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
     }
     for (int i = specWidth / 2; i < specWidth; i++)
     {
-        *(cutoffWindow + i) = 1. - (float)(i - (specWidth / 2)) / (float)(ceildiv(specWidth, 2) - 1);
+        *(cutoffWindow + i) = 1.;// -(float)(i - (specWidth / 2)) / (float)(ceildiv(specWidth, 2) - 1);
     }
     for (int i = specWidth; i < config.halfTripleBatchSize / 2 + 1; i++)
     {
@@ -589,7 +590,7 @@ PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLen
     for (int i = 0; i < markers.markerLength; i++)
     {
         *(markers.markers + i) = (double)(*(markers.markersUp.content + i) + *(markers.markersDown.content + i)) / 2.;
-        //*(markers.markers + i) = floor(*(markers.markers + i)); Last resort option should 1-sample timing mismatch between wave and re-synthesized voiced signal not be resolvable otherwise
+        *(markers.markers + i) = floor(*(markers.markers + i));// Last resort option should 1-sample timing mismatch between wave and re-synthesized voiced signal not be resolvable otherwise
     }
     dynIntArray_dealloc(&markers.markersUp);
     dynIntArray_dealloc(&markers.markersDown);
@@ -773,11 +774,18 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
 {
     for (int i = 0; i < sample.config.batches; i++)
     {
+        float principalPhase = cpxArgd(*(result + i * (config.nHarmonics + 2) + config.nHarmonics - 2));
         for (int j = 0; j < config.halfHarmonics; j++)
         {
             float reducer = fmaxf((*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[0], (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[1]) * sample.config.voicedThrh;
-            *(sample.specharm + i * config.frameSize + config.halfHarmonics - 1 - j) = fmaxf(cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - reducer, 0.);
-            *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j));
+            *(sample.specharm + i * config.frameSize + config.halfHarmonics - 1 - j) = fmaxf(cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - reducer, 0.) * 2.;
+            *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - (float)(config.halfHarmonics - j - 1) * principalPhase;
+            *(sample.specharm + i * config.frameSize + config.halfHarmonics) = 0.;
+            *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = fmodf(fmodf(*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j), 2. * pi) + 2. * pi, 2. * pi);
+            if (*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) > pi)
+            {
+                *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) -= 2. * pi;
+            }
         }
         nfft_plan inverseNUFFT;
         nfft_init_1d(&inverseNUFFT, config.nHarmonics, config.tripleBatchSize * config.filterBSMult);

@@ -9,8 +9,14 @@
 
 float* interp(float* x, float* y, float* xs, int len, int lenxs);
 
+void interp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys);
+
 float* extrap(float* x, float* y, float* xs, int len, int lenxs);
 
+void extrap_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys);
+
 float* circInterp(float* x, float* y, float* xs, int len, int lenxs);
+
+void circInterp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys);
 
 void phaseInterp_inplace(float* phasesA, float* phasesB, int len, float factor);

@@ -61,6 +61,7 @@ typedef struct
     unsigned int ampContThreshold;
     unsigned int spectralRolloff1;
     unsigned int spectralRolloff2;
+    float breCompPremul;
 }
 engineCfg;
 
