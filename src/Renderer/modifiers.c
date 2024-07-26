@@ -15,7 +15,7 @@
 #include "src/interpolation.h"
 #include LIBESPER_FFTW_INCLUDE_PATH
 
-void applyBreathiness(float* specharm, float* breathiness, int length, engineCfg config)
+void LIBESPER_CDECL applyBreathiness(float* specharm, float* breathiness, int length, engineCfg config)
 {
 	for (int i = 0; i < length; i++)
 	{
@@ -53,7 +53,7 @@ void applyBreathiness(float* specharm, float* breathiness, int length, engineCfg
 	}
 }
 
-void pitchShift(float* specharm, float* srcPitch, float* tgtPitch, float* formantShift, float* breathiness, int length, engineCfg config)
+void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch, float* formantShift, float* breathiness, int length, engineCfg config)
 {
 	float* harmonicsSpace = (float*)malloc(config.halfHarmonics * sizeof(float));
 	float* spectrumSpace = (float*)malloc((config.halfTripleBatchSize + 1) * sizeof(float));
@@ -132,53 +132,22 @@ void pitchShift(float* specharm, float* srcPitch, float* tgtPitch, float* forman
 	free(shiftedSpectrumSpace);
 }
 
-void applyPeakDampening(float* specharm, float* compression, int length, engineCfg config)
-{
-	for (int i = 0; i < length; i++)
-	{
-		for (int j = 0; j < config.halfHarmonics; j++)
-		{
-			*(specharm + i * config.frameSize + j) *= breathinessVoiced;
-		}
-		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
-		{
-			*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= breathinessUnvoiced;
-		}
-	}
-}
-
-void applyStrength()
+void LIBESPER_CDECL applyDynamics()
 {
 
 }
 
-void applyBrightness()
+void LIBESPER_CDECL applyBrightness()
 {
 
 }
 
-void applyGrowl()
+void LIBESPER_CDECL applyGrowl()
 {
 
 }
 
-void applyCoarseness()
+void LIBESPER_CDECL applyRoughness()
 {
 	//random voiced phase modulastion
 }
-/*Flags:
--pitch stability
--loop overlap
--loop offset
--fade in/out (i/o/io/x)
--steadiness
--breathiness
--formant shift
--intonation strength(?) (shift uv spectrum with v harms)
--subharmonics(?)
--peak dampening
--strength
--brightness
--coarseness
--growl
-*/
