@@ -244,17 +244,17 @@ LIBESPER_EXPORT void LIBESPER_CDECL applyBreathiness(float* specharm, float* bre
 */
 LIBESPER_EXPORT void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch, float* formantShift, float* breathiness, int length, engineCfg config);
 
-//applies a dynamics effect. Not yet implemented.
-LIBESPER_EXPORT void LIBESPER_CDECL applyDynamics();
+//applies a dynamics effect to a specharm array. Also requires a pitch array.
+LIBESPER_EXPORT void LIBESPER_CDECL applyDynamics(float* specharm, float* dynamics, float* pitch, int length, engineCfg config);
 
-//applies a brightness effect. Not yet implemented.
-LIBESPER_EXPORT void LIBESPER_CDECL applyBrightness();
+//applies a brightness effectto a specharm array.
+void LIBESPER_CDECL applyBrightness(float* specharm, float* brightness, int length, engineCfg config);
 
-//applies a growl effect. Not yet implemented.
-LIBESPER_EXPORT void LIBESPER_CDECL applyGrowl();
+//applies a growl effect to a specharm array. lfophase is a pointer to a single float value representing the phase of the growl effect at the beginning of the sample. It will be updated to the phase at the end of the sample.
+LIBESPER_EXPORT void LIBESPER_CDECL applyGrowl(float* specharm, float* growl, float* lfoPhase, int length, engineCfg config);
 
-//applies a coarseness effect. Not yet implemented.
-LIBESPER_EXPORT void LIBESPER_CDECL applyRoughness();
+//applies a roughness effect to a specharm array.
+LIBESPER_EXPORT void LIBESPER_CDECL applyRoughness(float* specharm, float* roughness, int length, engineCfg config);
 
 
 

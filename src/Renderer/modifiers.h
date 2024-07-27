@@ -11,10 +11,10 @@ LIBESPER_EXPORT void LIBESPER_CDECL applyBreathiness(float* specharm, float* bre
 
 LIBESPER_EXPORT void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch, float* formantShift, float* breathiness, int length, engineCfg config);
 
-LIBESPER_EXPORT void LIBESPER_CDECL applyDynamics();
+LIBESPER_EXPORT void LIBESPER_CDECL applyDynamics(float* specharm, float* dynamics, float* pitch, int length, engineCfg config);
 
-LIBESPER_EXPORT void LIBESPER_CDECL applyBrightness();
+LIBESPER_EXPORT void LIBESPER_CDECL applyBrightness(float* specharm, float* brightness, int length, engineCfg config);
 
-LIBESPER_EXPORT void LIBESPER_CDECL applyGrowl();
+LIBESPER_EXPORT void LIBESPER_CDECL applyGrowl(float* specharm, float* growl, float* lfoPhase, int length, engineCfg config);
 
-LIBESPER_EXPORT void LIBESPER_CDECL applyRoughness();
+LIBESPER_EXPORT void LIBESPER_CDECL applyRoughness(float* specharm, float* roughness, int length, engineCfg config);
