@@ -13,11 +13,19 @@ add_library(esper SHARED
     src/Renderer/modifiers.c
     src/fft.c
     src/interpolation.c
-    src/util.c)
+    src/util.c
+    esper.def)
 target_include_directories(esper PRIVATE "${PROJECT_SOURCE_DIR}/")
 target_compile_definitions(esper PRIVATE LIBESPER_BUILD)
 set_property(TARGET esper PROPERTY C_STANDARD 11)
 set_property(TARGET esper PROPERTY C_VISIBILITY_PRESET hidden)
+set_property(TARGET esper PROPERTY OUTPUT_NAME "esper")
+set_property(TARGET esper PROPERTY WINDOWS_EXPORT_ALL_SYMBOLS ON)
+set_target_properties(esper PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+)
 if (WIN32)
     target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw_win/libfftw3f-3.lib")
 

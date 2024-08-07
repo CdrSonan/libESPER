@@ -44,7 +44,7 @@ void LIBESPER_CDECL pitchCalcFallback(cSample sample, engineCfg config) {
         delta = config.sampleRate / sample.config.expectedPitch;
         for (int i = 0; i < numZeroTransitions; i++) {
             offset = *(zeroTransitions + i);
-            bias = fabsf(offset - batchStart - (float)config.sampleRate / (float)sample.config.expectedPitch);
+            bias = fabsf(offset - batchStart - (float)config.sampleRate / (float)sample.config.expectedPitch);//TODO: add bias-less option
             newError = 0;
             for (int j = 0; j < batchSize; j++) {
                 newError += powf(*(sample.waveform + batchStart + j) - *(sample.waveform + offset + j), 2.) * bias;
