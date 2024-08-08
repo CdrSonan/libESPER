@@ -11,6 +11,8 @@
 #include <math.h>
 #include "src/util.h"
 
+#include <Windows.h>
+
 //fallback function for calculating the approximate time-dependent pitch of a sample.
 //Used when the Torchaudio implementation fails, likely due to a too narrow search range setting or the sample being too short.
 void LIBESPER_CDECL pitchCalcFallback(cSample sample, engineCfg config) {
@@ -50,7 +52,7 @@ void LIBESPER_CDECL pitchCalcFallback(cSample sample, engineCfg config) {
                 newError += powf(*(sample.waveform + batchStart + j) - *(sample.waveform + offset + j), 2.) * bias;
             }
             if ((error > newError) || (error == -1)) {
-                delta = i - batchStart;
+                delta = offset - batchStart;
                 error = newError;
             }
         }
@@ -68,8 +70,10 @@ void LIBESPER_CDECL pitchCalcFallback(cSample sample, engineCfg config) {
         sample.config.pitchLength += *(intermediateBuffer + i);
     }
     sample.config.pitchLength /= config.batchSize;
-    //TODO: get rid of pointer reallocation, since it can break PyTorch memory management!!!
-    sample.pitchDeltas = (int*) realloc(sample.pitchDeltas, sample.config.pitchLength * sizeof(int));
+    if (sample.config.pitchLength > sample.config.length)
+    {
+        sample.config.pitchLength = sample.config.length;
+    }
     //transform from pitch-synchronous to time-synchronous space and fill average pitch field
     sample.config.pitch = 0;
     for (int i = 0; i < sample.config.pitchLength; i++) {
