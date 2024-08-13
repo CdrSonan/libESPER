@@ -33,9 +33,9 @@ void LIBESPER_CDECL renderUnvoiced(float* specharm, float* excitation, int premu
 		{
 			for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
 			{
-				float multiplier = *(specharm + i * config.frameSize + config.nHarmonics + 2 + i);
-				(*(cpxExcitation + i))[0] = *(excitation + i) * multiplier;
-				(*(cpxExcitation + i))[1] = *(excitation + length * (config.halfTripleBatchSize + 1) + i) * multiplier;
+				float multiplier = *(specharm + i * config.frameSize + config.nHarmonics + 2 + j);
+				(*(cpxExcitation + i * (config.halfTripleBatchSize + 1) + j))[0] = *(excitation + i * (config.halfTripleBatchSize + 1) + j) * multiplier;
+				(*(cpxExcitation + i * (config.halfTripleBatchSize + 1) + j))[1] = *(excitation + (length + i) * (config.halfTripleBatchSize + 1) + j) * multiplier;
 			}
 		}
 	}
