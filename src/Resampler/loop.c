@@ -41,14 +41,14 @@ void loopSamplerSpecharm(float* input, int length, float* output, int targetLeng
         {
             for (int j = 0; j < config.halfHarmonics; j++)
             {
-                *(buffer + i * config.frameSize + j) *= (float)(i + 1) / (float)(effSpacing + 1);
-                *(buffer + i * config.frameSize + j) += *(input + (length - effSpacing + i) * config.frameSize + j) * (1. - ((float)(i + 1) / (float)(effSpacing + 1)));
+                *(buffer + i * config.frameSize + j) *= powf((float)(i + 1) / (float)(effSpacing + 1), 4.);
+                *(buffer + i * config.frameSize + j) += *(input + (length - effSpacing + i) * config.frameSize + j) * powf(1. - ((float)(i + 1) / (float)(effSpacing + 1)), 4.);
             }
             phaseInterp_inplace(buffer + i * config.frameSize + config.halfHarmonics, input + (length - effSpacing + i) * config.frameSize + config.halfHarmonics, config.halfHarmonics, (float)(i + 1) / (float)(effSpacing + 1));
             for (int j = 2 * config.halfHarmonics; j < config.frameSize; j++)
             {
-                *(buffer + i * config.frameSize + j) *= (float)(i + 1) / (float)(effSpacing + 1);
-                *(buffer + i * config.frameSize + j) += *(input + (length - effSpacing + i) * config.frameSize + j) * (1. - ((float)(i + 1) / (float)(effSpacing + 1)));
+                *(buffer + i * config.frameSize + j) *= powf((float)(i + 1) / (float)(effSpacing + 1), 4.);
+                *(buffer + i * config.frameSize + j) += *(input + (length - effSpacing + i) * config.frameSize + j) * powf(1. - ((float)(i + 1) / (float)(effSpacing + 1)), 4.);
             }
         }
         //add mid windows from buffer to output
