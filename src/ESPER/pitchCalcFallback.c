@@ -54,7 +54,13 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
         }
         //calculate autocorrelation error for each zeroTransition; load the value of the best candidate into delta
         error = -1;
-        delta = config.sampleRate / sample->config.expectedPitch;
+		if (sample->config.expectedPitch == 0) {
+			delta = 300;
+		}
+		else
+		{
+			delta = config.sampleRate / sample->config.expectedPitch;
+		}
         for (int i = 0; i < numZeroTransitions; i++) {
             offset = *(zeroTransitions + i);
 			if (sample->config.expectedPitch == 0) {
@@ -66,14 +72,24 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 			}
             newError = 0;
 			contrast = 0;
-            for (int j = 0; j < *(intermediateBuffer + intermBufferLen); j++) {
+            int limit;
+			if (intermBufferLen == 0)
+            {
+				limit = 0;
+			}
+			else
+            {
+				limit = *(intermediateBuffer + intermBufferLen - 1);
+			}
+            for (int j = 0; j < limit; j++) {//old:batchSize
                 newError += powf(*(sample->waveform + batchStart + j) - *(sample->waveform + offset + j), 2.) * bias;
             }
-			for (int j = 0; j < *(intermediateBuffer + intermBufferLen) / 2; j++) {
-				contrast += powf(*(sample->waveform + batchStart + j) - *(sample->waveform + batchStart + *(intermediateBuffer + intermBufferLen) / 2 + j), 2.);
+			for (int j = 0; j < limit / 2; j++) {
+				contrast += powf(*(sample->waveform + batchStart + j) - *(sample->waveform + batchStart + limit / 2 + j), 2.);
 			}
-			newError /= contrast;
-			newError /= *(intermediateBuffer + intermBufferLen);
+			//newError /= contrast;
+			//newError /= limit;
+			newError = (newError - 2 * contrast) / limit;
             if ((error > newError) || (error == -1)) {
                 delta = offset - batchStart;
                 error = newError;
