@@ -67,7 +67,7 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 	for (int i = 0; i < length; i++)
 	{
 		float effSrcPitch = (float)config.tripleBatchSize / *(srcPitch + i);
-		float effTgtPitch = (float)config.tripleBatchSize / (*(formantShift + i) + *(tgtPitch + i));
+		float effTgtPitch = (float)config.tripleBatchSize / *(tgtPitch + i);
 
 		for (int j = 0; j < config.halfHarmonics; j++)
 		{
@@ -106,6 +106,7 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 		{
 			continue;
 		}
+		effSrcPitch = *(formantShift + i) * effSrcPitch + (1. - *(formantShift + i)) * effTgtPitch;
 		effTgtPitch = *(breathiness + i) * effTgtPitch + (1. - *(breathiness + i)) * effSrcPitch;
 		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
 		{
