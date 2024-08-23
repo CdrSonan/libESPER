@@ -133,6 +133,10 @@ unsigned int findIndex(int* markers, unsigned int markerLength, int position);
 
 unsigned int findIndex_double(double* markers, unsigned int markerLength, int position);
 
+int compare_uint(const void* a, const void* b);
+
+unsigned int median(unsigned int* array, unsigned int length);
+
 float cpxAbsf(fftwf_complex input);
 
 double cpxAbsd(fftw_complex input);

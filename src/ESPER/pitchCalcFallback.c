@@ -20,21 +20,27 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
     unsigned int batchSize;
 	unsigned int lowerLimit;
 	if (sample->config.expectedPitch == 0) {
-		batchSize = config.sampleRate / 10;
-        lowerLimit = 10;
+		batchSize = config.tripleBatchSize;
+        lowerLimit = config.sampleRate / 1000;
 	}
     else
     {
         batchSize = (int)((1. + sample->config.searchRange) * (float)config.sampleRate / (float)sample->config.expectedPitch);
+		if (batchSize > config.tripleBatchSize)
+        {
+			batchSize = config.tripleBatchSize;
+		}
         lowerLimit = (int)((1. - sample->config.searchRange) * (float)config.sampleRate / (float)sample->config.expectedPitch);
+		if (lowerLimit < config.sampleRate / 1000)
+		{
+			lowerLimit = config.sampleRate / 1000;
+		}
 	}
     unsigned int batchStart = 0;
     //oversized array for holding all zeroTransitions within a batch
     unsigned int* zeroTransitions = (unsigned int*) malloc(batchSize * sizeof(unsigned int));
     unsigned int numZeroTransitions;
     double error;
-    double newError;
-    double contrast;
     unsigned int delta;
     float bias;
     unsigned int offset;
@@ -64,32 +70,23 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
         for (int i = 0; i < numZeroTransitions; i++) {
             offset = *(zeroTransitions + i);
 			if (sample->config.expectedPitch == 0) {
-				bias = 1;
+				bias = 1.;
 			}
             else
             {
                 bias = fabsf(offset - batchStart - (float)config.sampleRate / (float)sample->config.expectedPitch);
 			}
-            newError = 0;
-			contrast = 0;
-            int limit;
-			if (intermBufferLen == 0)
-            {
-				limit = 0;
-			}
-			else
-            {
-				limit = *(intermediateBuffer + intermBufferLen - 1);
-			}
-            for (int j = 0; j < limit; j++) {//old:batchSize
+            double newError = 0;
+			double contrast = 0;
+            for (int j = 0; j < batchSize; j++) {
                 newError += powf(*(sample->waveform + batchStart + j) - *(sample->waveform + offset + j), 2.) * bias;
             }
-			for (int j = 0; j < limit / 2; j++) {
-				contrast += powf(*(sample->waveform + batchStart + j) - *(sample->waveform + batchStart + limit / 2 + j), 2.);
+			for (int j = 0; j < batchSize - batchSize % (offset - batchStart); j++) {
+                contrast += *(sample->waveform + batchStart + j) * sinf(2. * pi * j / (offset - batchStart));
 			}
-			//newError /= contrast;
-			//newError /= limit;
-			newError = (newError - 2 * contrast) / limit;
+			contrast /= batchSize - batchSize % (offset - batchStart);
+            newError /= fabsf(contrast);
+            newError *= (float)(offset - batchStart) / (float)batchSize;
             if ((error > newError) || (error == -1)) {
                 delta = offset - batchStart;
                 error = newError;
@@ -102,21 +99,21 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
     }
     free(zeroTransitions);
     unsigned int cursor = 0;
-    unsigned int cursor2 = 0;
+    int cursor2 = 0;
     //calculate "virtual" pitch-based sample length
     sample->config.pitchLength = 0;
     for (int i = 0; i < intermBufferLen; i++) {
         sample->config.pitchLength += *(intermediateBuffer + i);
     }
     sample->config.pitchLength /= config.batchSize;
-    if (sample->config.pitchLength > sample->config.length)
+    sample->config.pitch /= intermBufferLen;
+    if (sample->config.pitchLength > sample->config.batches)
     {
-        sample->config.pitchLength = sample->config.length;
+        sample->config.pitchLength = sample->config.batches;
     }
     //transform from pitch-synchronous to time-synchronous space and fill average pitch field
-    sample->config.pitch = 0;
     for (int i = 0; i < sample->config.pitchLength; i++) {
-        while(cursor2 >= *(intermediateBuffer + cursor)) {
+        while(cursor2 >= (int)*(intermediateBuffer + cursor)) {
             if (cursor < intermBufferLen - 1) {
                 cursor++;
             }
@@ -124,8 +121,7 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
         }
         cursor2 += config.batchSize;
         *(sample->pitchDeltas + i) = *(intermediateBuffer + cursor);
-        sample->config.pitch += *(intermediateBuffer + cursor);
     }
+	sample->config.pitch = median(intermediateBuffer, intermBufferLen);
     free(intermediateBuffer);
-    sample->config.pitch /= sample->config.pitchLength;
 }

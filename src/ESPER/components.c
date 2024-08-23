@@ -23,7 +23,8 @@ float* lowRangeSmooth(cSample sample, float* signalsAbs, engineCfg config)
 {
     //scale cutoff frequency based on window size
     //legacy method: int specWidth = (int)((float)config.tripleBatchSize / (float)(sample.config.specWidth + 3) / fmax(sample.config.expectedPitch / 440., 1.));
-    int specWidth = (int)((float)config.sampleRate / 6. / (float)sample.config.expectedPitch);
+    //int specWidth = (int)((float)config.sampleRate / 6. / (float)sample.config.expectedPitch);
+    int specWidth = (float)sample.config.pitch / 6.;
     float* spectra = (float*) malloc(sample.config.batches * (config.halfTripleBatchSize + 1) * sizeof(float));
     //define fourier-space windowing function for lowpass filter
     float* cutoffWindow = (float*) malloc((config.halfTripleBatchSize / 2 + 1) * sizeof(float));

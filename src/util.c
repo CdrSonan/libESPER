@@ -9,6 +9,7 @@
 
 #include <malloc.h>
 #include <math.h>
+#include <stdlib.h>
 #include LIBESPER_FFTW_INCLUDE_PATH
 
 //initializes a dynamic integer array, and allocates memory for it
@@ -86,6 +87,27 @@ unsigned int findIndex_double(double* markers, unsigned int markerLength, int po
     }
     return (unsigned int)high;
 }
+
+int compare_uint(const void* a, const void* b)
+{
+	return (*(unsigned int*)a - *(unsigned int*)b);
+}
+
+unsigned int median(unsigned int* array, unsigned int length)
+{
+	qsort(array, length, sizeof(unsigned int), compare_uint);
+	unsigned int median;
+	if (length % 2 == 0)
+	{
+		median = (*(array + length / 2) + *(array + length / 2 - 1)) / 2;
+	}
+	else
+	{
+		median = *(array + length / 2);
+	}
+	return median;
+}
+
 
 //calculates the absolute value of a complex number.
 float cpxAbsf(fftwf_complex input)

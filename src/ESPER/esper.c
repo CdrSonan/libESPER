@@ -29,9 +29,6 @@ void LIBESPER_CDECL specCalc(cSample sample, engineCfg config)
     float* lowSpectra = lowRangeSmooth(sample, signalsAbs, config);
     float* highSpectra = highRangeSmooth(sample, signalsAbs, config);
     free(signalsAbs);
-	if (sample.config.expectedPitch == 0) {
-		finalizeSpectra(sample, highSpectra, highSpectra, config);
-	}
     finalizeSpectra(sample, lowSpectra, highSpectra, config);
     separateVoicedUnvoiced(sample, config);
     finalizeSample(sample, config);
