@@ -7,7 +7,7 @@
 
 #include "src/util.h"
 
-LIBESPER_EXPORT void LIBESPER_CDECL applyBreathiness(float* specharm, float* breathiness, int length, engineCfg config);
+LIBESPER_EXPORT void LIBESPER_CDECL applyBreathiness(float* specharm, float* excitation, float* breathiness, int length, engineCfg config);
 
 LIBESPER_EXPORT void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch, float* formantShift, float* breathiness, int length, engineCfg config);
 

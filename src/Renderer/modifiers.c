@@ -16,7 +16,7 @@
 #include "src/interpolation.h"
 #include LIBESPER_FFTW_INCLUDE_PATH
 
-void LIBESPER_CDECL applyBreathiness(float* specharm, float* breathiness, int length, engineCfg config)
+void LIBESPER_CDECL applyBreathiness(float* specharm, float* excitation, float* breathiness, int length, engineCfg config)
 {
 	for (int i = 0; i < length; i++)
 	{
@@ -31,6 +31,7 @@ void LIBESPER_CDECL applyBreathiness(float* specharm, float* breathiness, int le
 			divisor += powf(*(specharm + i * config.frameSize + config.nHarmonics + 2 + j), 2.);
 		}
 		compensation *= config.breCompPremul / divisor;
+		compensation *= (config.halfTripleBatchSize + 1) / config.halfHarmonics;
 		float breathinessVoiced;
 		float breathinessUnvoiced;
 		if (*(breathiness + i) >= 0.)
@@ -41,7 +42,7 @@ void LIBESPER_CDECL applyBreathiness(float* specharm, float* breathiness, int le
 		else
 		{
 			breathinessVoiced = 1.;
-			breathinessUnvoiced = *(breathiness + i);
+			breathinessUnvoiced = 1. + *(breathiness + i);
 		}
 		for (int j = 0; j < config.halfHarmonics; j++)
 		{
@@ -49,7 +50,8 @@ void LIBESPER_CDECL applyBreathiness(float* specharm, float* breathiness, int le
 		}
 		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
 		{
-			*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= breathinessUnvoiced;
+			*(excitation + i * (config.halfTripleBatchSize + 1) + j) *= breathinessUnvoiced;
+			*(excitation + (i + length) * (config.halfTripleBatchSize + 1) + j) *= breathinessUnvoiced;
 		}
 	}
 }
@@ -80,7 +82,7 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 			config.halfTripleBatchSize + 1,
 			config.halfHarmonics,
 			multipliers);
-		for (int j = 5; j < config.halfHarmonics; j++)
+		for (int j = 2; j < config.halfHarmonics; j++)
 		{
 			*(specharm + i * config.frameSize + j) /= *(multipliers + j);
 		}
@@ -96,25 +98,30 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 			config.halfTripleBatchSize + 1,
 			config.halfHarmonics,
 			multipliers);
-		for (int j = 5; j < config.halfHarmonics; j++)
+		for (int j = 2; j < config.halfHarmonics; j++)
 		{
+			if (*(harmonicsSpace + j) >= config.halfTripleBatchSize + 1)
+			{
+				*(specharm + i * config.frameSize + j) *= 0.;
+				continue;
+			}
 			*(specharm + i * config.frameSize + j) *= *(multipliers + j);
 		}
 
 
-		if (*(breathiness + i) <= 0)
+		float modEffTgtPitch;
+		if (*(breathiness + i) > 0.)
 		{
-			continue;
+			modEffTgtPitch = *(breathiness + i) * effTgtPitch + (1. - *(breathiness + i)) * effSrcPitch;
+			modEffTgtPitch += (effTgtPitch - modEffTgtPitch) * *(formantShift + i);
 		}
-		effSrcPitch = *(formantShift + i) * effSrcPitch + (1. - *(formantShift + i)) * effTgtPitch;
-		effTgtPitch = *(breathiness + i) * effTgtPitch + (1. - *(breathiness + i)) * effSrcPitch;
+		else
+		{
+			modEffTgtPitch = effSrcPitch + (effTgtPitch - effSrcPitch) * *(formantShift + i);
+		}
 		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
 		{
-			*(shiftedSpectrumSpace + j) = j * effTgtPitch;
-			if (*(shiftedSpectrumSpace + j) >= config.halfTripleBatchSize + 1)
-			{
-				*(shiftedSpectrumSpace + j) = config.halfTripleBatchSize;
-			}
+			*(shiftedSpectrumSpace + j) = j * effSrcPitch / modEffTgtPitch;
 		}
 		interp_inpl(
 			spectrumSpace,
@@ -125,7 +132,12 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 			multipliers);
 		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
 		{
-			*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= *(multipliers + j);
+			if (*(shiftedSpectrumSpace + j) >= config.halfTripleBatchSize + 1)
+			{
+				*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) = 0.;
+				continue;
+			}
+			*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) = *(multipliers + j);
 		}
 	}
 	free(harmonicsSpace);
@@ -151,11 +163,11 @@ void LIBESPER_CDECL applyDynamics(float* specharm, float* dynamics, float* pitch
 		{
 			if (j < thresholdA)
 			{
-				*(specharm + i * config.frameSize + j) *= 1. - 0.5 * *(dynamics + i);
+				*(specharm + i * config.frameSize + j) *= 1. + 0.25 * *(dynamics + i);
 			}
 			else if (j < thresholdB)
 			{
-				*(specharm + i * config.frameSize + j) *= 1. - 0.5 * *(dynamics + i) * (j - thresholdA) / (thresholdB - thresholdA);
+				*(specharm + i * config.frameSize + j) *= 1. + 0.25 * *(dynamics + i) * (j - thresholdA) / (thresholdB - thresholdA);
 			}
 		}
 		thresholdA = 500 * config.tripleBatchSize / config.sampleRate;
@@ -169,11 +181,15 @@ void LIBESPER_CDECL applyDynamics(float* specharm, float* dynamics, float* pitch
 			}
 			else if (j < thresholdB)
 			{
-				*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= 1. + *(dynamics + i) * (j - thresholdA) / (thresholdB - thresholdA);
+				*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= 1. - *(dynamics + i) * (j - thresholdA) / (thresholdB - thresholdA);
 			}
 			else if (j < thresholdC)
 			{
-				*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= 1. + *(dynamics + i) * (thresholdC - j) / (thresholdC - thresholdB);
+				*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= 1. - *(dynamics + i) * (thresholdC - j) / (thresholdC - thresholdB);
+			}
+			if (*(dynamics + i) < 0.)
+			{
+				*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= 1. + 0.5 * *(dynamics + i);
 			}
 		}
 	}
@@ -183,8 +199,8 @@ void LIBESPER_CDECL applyBrightness(float* specharm, float* brightness, int leng
 {
 	for (int i = 0; i < length; i++)
 	{
-		float exponent = 1. + 0.5 * *(brightness + i);
-		float reference = 1.;
+		float exponent = 1. - 0.5 * *(brightness + i);
+		float reference = 0.;
 		for (int j = 0; j < config.halfHarmonics; j++)
 		{
 			if (*(specharm + i * config.frameSize + j) > reference)
@@ -192,13 +208,12 @@ void LIBESPER_CDECL applyBrightness(float* specharm, float* brightness, int leng
 				reference = *(specharm + i * config.frameSize + j);
 			}
 		}
-		reference *= 0.75;
-		float multiplier = reference * (exponent + 1.) / 2. / powf(reference, exponent + 1.);
+		reference *= 0.9;
 		for (int j = 0; j < config.halfHarmonics; j++)
 		{
-			*(specharm + i * config.frameSize + j) = powf(*(specharm + i * config.frameSize + j), exponent) * multiplier;
+			*(specharm + i * config.frameSize + j) = powf(*(specharm + i * config.frameSize + j) / reference, exponent) * reference;
 		}
-		reference = 1.;
+		reference = 0.;
 		for (int j = 0; j < config.halfTripleBatchSize; j++)
 		{
 			if (*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) > reference)
@@ -206,11 +221,17 @@ void LIBESPER_CDECL applyBrightness(float* specharm, float* brightness, int leng
 				reference = *(specharm + i * config.frameSize + config.nHarmonics + 2 + j);
 			}
 		}
-		reference *= 0.75;
-		multiplier = reference * (exponent + 1.) / 2. / powf(reference, exponent + 1.);
+		reference *= 0.9;
 		for (int j = 0; j < config.halfTripleBatchSize; j++)
 		{
-			*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) = powf(*(specharm + i * config.frameSize + config.nHarmonics + 2 + j), exponent) * multiplier;
+			*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) = powf(*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) / reference, exponent) * reference;
+		}
+		if (*(brightness + i) >  0.)
+		{
+			for (int j = 0; j < config.halfHarmonics; j++)
+			{
+				*(specharm + i * config.frameSize + config.halfHarmonics + j) *= 1. - *(brightness + i);
+			}
 		}
 	}
 	
@@ -220,13 +241,14 @@ void LIBESPER_CDECL applyGrowl(float* specharm, float* growl, float* lfoPhase, i
 {
 	for (int i = 0; i < length; i++)
 	{
-		float phaseAdvance = 2. * 3.1415926535 / config.tickRate * 40.;
+		float phaseAdvance = 2. * 3.1415926535 / config.tickRate * 15.;
 		*lfoPhase += phaseAdvance;
 		if (*lfoPhase >= 2. * 3.1415926535)
 		{
 			*lfoPhase -= 2. * 3.1415926535;
 		}
-		float lfo = 1. - powf(sin(*lfoPhase), 6.) * *(growl + i);
+		float exponent = 2.f + (double)rand() / (double)RAND_MAX * 4.f;
+		float lfo = 1. - powf(fabsf(sin(*lfoPhase)), exponent) * *(growl + i);
 		for (int j = 0; j < config.halfHarmonics; j++)
 		{
 			*(specharm + i * config.frameSize + j) *= lfo;
@@ -244,7 +266,8 @@ void LIBESPER_CDECL applyRoughness(float* specharm, float* roughness, int length
 	{
 		for (int j = 0; j < config.halfHarmonics; j++)
 		{
-			*(specharm + i * config.frameSize + config.halfHarmonics + j) += ((float)(rand() / RAND_MAX) - 0.5) * *(roughness + i);
+			*(specharm + i * config.frameSize + config.halfHarmonics + j) *= *(roughness + i);
+			*(specharm + i * config.frameSize + config.halfHarmonics + j) += ((double)rand() / (double)RAND_MAX - 0.5) * 2.f * *(roughness + i);
 		}
 	}
 }

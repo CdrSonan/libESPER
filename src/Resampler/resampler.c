@@ -99,7 +99,7 @@ void LIBESPER_CDECL resampleSpecharm(float* avgSpecharm, float* specharm, int le
     #pragma omp parallel for
     for (int i = 0; i < timings.windowEnd; i++)
     {
-		float multiplier = powf(1. - *(steadiness + i), 2.);
+		float multiplier = 1. - *(steadiness + i);
         for (int j = 0; j < config.halfHarmonics; j++)
         {
             *(buffer + i * config.frameSize + j) *= multiplier;
