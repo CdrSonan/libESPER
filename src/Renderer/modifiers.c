@@ -70,7 +70,8 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 	{
 		float effSrcPitch = (float)config.tripleBatchSize / *(srcPitch + i);
 		float effTgtPitch = (float)config.tripleBatchSize / *(tgtPitch + i);
-
+		float srcAmplitude = 0.;
+		float tgtAmplitude = 0.;
 		for (int j = 0; j < config.halfHarmonics; j++)
 		{
 			*(harmonicsSpace + j) = j * effSrcPitch;
@@ -85,6 +86,7 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 		for (int j = 2; j < config.halfHarmonics; j++)
 		{
 			*(specharm + i * config.frameSize + j) /= *(multipliers + j);
+			srcAmplitude += powf(*(specharm + i * config.frameSize + j), 2.);
 		}
 
 		for (int j = 0; j < config.halfHarmonics; j++)
@@ -106,8 +108,15 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 				continue;
 			}
 			*(specharm + i * config.frameSize + j) *= *(multipliers + j);
+			tgtAmplitude += powf(*(specharm + i * config.frameSize + j), 2.);
 		}
-
+		if (srcAmplitude < tgtAmplitude && tgtAmplitude > 0.)
+		{
+			for (int j = 0; j < config.halfHarmonics; j++)
+			{
+				*(specharm + i * config.frameSize + j) *= srcAmplitude / tgtAmplitude;
+			}
+		}
 
 		float modEffTgtPitch;
 		if (*(breathiness + i) > 0.)
@@ -119,9 +128,12 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 		{
 			modEffTgtPitch = effSrcPitch + (effTgtPitch - effSrcPitch) * *(formantShift + i);
 		}
+		srcAmplitude = 0.;
+		tgtAmplitude = 0.;
 		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
 		{
 			*(shiftedSpectrumSpace + j) = j * effSrcPitch / modEffTgtPitch;
+			srcAmplitude += powf(*(specharm + i * config.frameSize + config.nHarmonics + 2 + j), 2.);
 		}
 		interp_inpl(
 			spectrumSpace,
@@ -138,6 +150,14 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 				continue;
 			}
 			*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) = *(multipliers + j);
+			tgtAmplitude += powf(*(specharm + i * config.frameSize + config.nHarmonics + 2 + j), 2.);
+		}
+		if (srcAmplitude < tgtAmplitude && tgtAmplitude > 0.)
+		{
+			for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
+			{
+				*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= srcAmplitude / tgtAmplitude;
+			}
 		}
 	}
 	free(harmonicsSpace);

@@ -628,6 +628,7 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
     //check if there are sufficient markers to perform pitch-synchronous analysis
     if (markerLength <= 1)
     {
+        printf("Insufficient markers to construct pitch-synchronous space. Falling back to fixed pitch heuristic.\n");
         evaluationPoints = (float*)malloc(windowLength * sizeof(float));
         for (int j = 0; j < windowLength; j++)
         {
@@ -640,6 +641,7 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
     }
     else if (markerLength == 2)
     {
+		printf("Insufficient markers to construct pitch-synchronous space. Falling back to linear interpolation.\n");
         evaluationPoints = (float*)malloc(offsetWindowLength * sizeof(float));
         for (int j = 0; j < offsetWindowLength; j++)
         {
