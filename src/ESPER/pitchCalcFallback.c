@@ -13,6 +13,15 @@
 
 #include <Windows.h>
 
+typedef struct
+{
+    unsigned int position;
+	MarkerCandidate* previous;
+	float distance;
+	int isRoot;
+	int isLeaf;
+} MarkerCandidate;
+
 //fallback function for calculating the approximate time-dependent pitch of a sample.
 //Used when the Torchaudio implementation fails, likely due to a too narrow search range setting or the sample being too short.
 void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
@@ -36,6 +45,7 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 			lowerLimit = config.sampleRate / 1000;
 		}
 	}
+    /*
     unsigned int batchStart = 0;
     //oversized array for holding all zeroTransitions within a batch
     unsigned int* zeroTransitions = (unsigned int*) malloc(batchSize * sizeof(unsigned int));
@@ -44,10 +54,11 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
     unsigned int delta;
     float bias;
     unsigned int offset;
+    */
     //buffer for storing pitch in pitch-synchronous format
-    unsigned int* intermediateBuffer = (unsigned int*) malloc(ceildiv(sample->config.length, lowerLimit) * sizeof(unsigned int));
-	*intermediateBuffer = 0;
-    unsigned int intermBufferLen = 0;
+    //unsigned int* intermediateBuffer = (unsigned int*) malloc(ceildiv(sample->config.length, lowerLimit) * sizeof(unsigned int));
+    //unsigned int intermBufferLen = 0;
+    
 
 	float* smoothedWave = (float*)malloc(sample->config.length * sizeof(float));
 	float x = 0;
@@ -60,7 +71,146 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 		*(smoothedWave + i) = x;
 	}
 
+	dynIntArray zeroTransitions;
+	dynIntArray_init(&zeroTransitions);
+	for (int i = 1; i < sample->config.length; i++) {
+		if (*(smoothedWave + i - 1) < 0 && *(smoothedWave + i) > 0) {
+			dynIntArray_append(&zeroTransitions, i);
+		}
+	}
+	int markerCandidateLength = zeroTransitions.length;
+	MarkerCandidate* markerCandidates = (MarkerCandidate*)malloc(zeroTransitions.length * sizeof(MarkerCandidate));
+	for (int i = 0; i < zeroTransitions.length; i++) {
+		(markerCandidates + i)->position = zeroTransitions.content[i];
+		(markerCandidates + i)->previous = NULL;
+		(markerCandidates + i)->distance = 0;
+		if (zeroTransitions.content[i] < batchSize || i == 0) {
+			(markerCandidates + i)->isRoot = 1;
+		}
+		else
+		{
+			(markerCandidates + i)->isRoot = 0;
+		}
+		if (zeroTransitions.content[i] >= zeroTransitions.length - batchSize || i == zeroTransitions.length - 1) {
+			(markerCandidates + i)->isLeaf = 1;
+		}
+		else
+		{
+			(markerCandidates + i)->isLeaf = 0;
+		}
+	}
+	for (int i = 0; i < markerCandidateLength; i++) {
+		if ((markerCandidates + i)->isRoot) {
+			continue;
+		}
+		for (int j = 1; j <= i; j++) {
+			unsigned int positionI = (markerCandidates + i)->position;
+			unsigned int positionJ = (markerCandidates + i - j)->position;
+			unsigned int delta = positionI - positionJ;
+			if (delta < lowerLimit) {
+				continue;
+			}
+			if (delta > batchSize) {
+				break;
+			}
+            float bias;
+            if (sample->config.expectedPitch == 0)
+			{
+				bias = 1.;
+			}
+			else
+			{
+				bias = fabsf(delta - (float)config.sampleRate / (float)sample->config.expectedPitch);
+			}
+			double newError = 0;
+			if (positionJ < batchSize)
+			{
+				for (int k = 0; k < batchSize; k++)
+				{
+					newError += powf(*(smoothedWave + positionI + k) - *(smoothedWave + positionJ + k), 2.) * bias;
+				}
+			}
+			else if (positionI >= sample->config.length - batchSize)
+			{
+				for (int k = 0; k < batchSize; k++)
+				{
+					newError += powf(*(smoothedWave + positionI - batchSize / 2 + k) - *(smoothedWave + positionJ - batchSize / 2 + k), 2.) * bias;
+				}
+			}
+			else
+			{
+				for (int k = 0; k < batchSize; k++)
+				{
+					newError += powf(*(smoothedWave + positionI - k) - *(smoothedWave + positionJ - k), 2.) * bias;
+				}
+			}
+			if (newError + (markerCandidates + i - j)->distance < (markerCandidates + i)->distance || (markerCandidates + i)->distance == 0) {
+				(markerCandidates + i)->distance = newError + (markerCandidates + i - j)->distance;
+				(markerCandidates + i)->previous = markerCandidates + i - j;
+			}
+		}
+	}
+	zeroTransitions.length = 0;
+	MarkerCandidate* currentBase = markerCandidates + markerCandidateLength - 1;
+	MarkerCandidate* current = currentBase;
+	while (currentBase->isLeaf)
+	{
+		if (currentBase->distance < current->distance)
+		{
+			current = currentBase;
+		}
+		currentBase--;
+	}
+	while (current->previous != NULL)
+	{
+		dynIntArray_append(&zeroTransitions, current->position);
+		current = current->previous;
+	}
+	unsigned int intermBufferLen = zeroTransitions.length;
+	unsigned int* intermediateBuffer = (unsigned int*)malloc(intermBufferLen * sizeof(unsigned int));
+	for (int i = 0; i < intermBufferLen; i++) {
+		*(intermediateBuffer + i) = zeroTransitions.content[intermBufferLen - i - 1];
+	}
+	dynIntArray_dealloc(&zeroTransitions);
+	free(markerCandidates);
+	free(smoothedWave);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     //run until sample is fully processed
+    /*
     while (batchStart + batchSize <= sample->config.length - batchSize) {
         //get all zero-transitions in the current batch
         numZeroTransitions = 0;
@@ -112,7 +262,7 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
     free(zeroTransitions);
 
 	//reverse pass to improve accuracy
-
+    */
 
 
 
