@@ -48,12 +48,24 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
     unsigned int* intermediateBuffer = (unsigned int*) malloc(ceildiv(sample->config.length, lowerLimit) * sizeof(unsigned int));
 	*intermediateBuffer = 0;
     unsigned int intermBufferLen = 0;
+
+	float* smoothedWave = (float*)malloc(sample->config.length * sizeof(float));
+	float x = 0;
+	float v = 0;
+	float a = 0;
+	for (int i = 0; i < sample->config.length; i++) {
+		a = *(sample->waveform + i) - 0.5 * x - 0.5 * v;
+		v += a;
+		x += v;
+		*(smoothedWave + i) = x;
+	}
+
     //run until sample is fully processed
     while (batchStart + batchSize <= sample->config.length - batchSize) {
         //get all zero-transitions in the current batch
         numZeroTransitions = 0;
         for (int i = batchStart + lowerLimit; i < batchStart + batchSize; i++) {
-            if ((*(sample->waveform + i - 1) < 0) && (*(sample->waveform + i) > 0)) {
+            if ((*(smoothedWave + i - 1) < 0) && (*(smoothedWave + i) > 0)) {
                 *(zeroTransitions + numZeroTransitions) = i;
                 numZeroTransitions++;
             }
@@ -79,10 +91,10 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
             double newError = 0;
 			double contrast = 0;
             for (int j = 0; j < batchSize; j++) {
-                newError += powf(*(sample->waveform + batchStart + j) - *(sample->waveform + offset + j), 2.) * bias;
+                newError += powf(*(smoothedWave + batchStart + j) - *(smoothedWave + offset + j), 2.) * bias;
             }
 			for (int j = 0; j < batchSize - batchSize % (offset - batchStart); j++) {
-                contrast += *(sample->waveform + batchStart + j) * sinf(2. * pi * j / (offset - batchStart));
+                contrast += *(smoothedWave + batchStart + j) * sinf(2. * pi * j / (offset - batchStart));
 			}
 			contrast /= batchSize - batchSize % (offset - batchStart);
             newError /= fabsf(contrast);
@@ -98,6 +110,14 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
         batchStart += delta;
     }
     free(zeroTransitions);
+
+	//reverse pass to improve accuracy
+
+
+
+
+
+
     unsigned int cursor = 0;
     int cursor2 = 0;
     //calculate "virtual" pitch-based sample length
