@@ -16,7 +16,7 @@
 typedef struct
 {
     unsigned int position;
-	MarkerCandidate* previous;
+	void* previous;
 	float distance;
 	int isRoot;
 	int isLeaf;
@@ -25,40 +25,40 @@ typedef struct
 //fallback function for calculating the approximate time-dependent pitch of a sample.
 //Used when the Torchaudio implementation fails, likely due to a too narrow search range setting or the sample being too short.
 void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
-    //limits for autocorrelation search
-    unsigned int batchSize;
+	//limits for autocorrelation search
+	unsigned int batchSize;
 	unsigned int lowerLimit;
 	if (sample->config.expectedPitch == 0) {
 		batchSize = config.tripleBatchSize;
-        lowerLimit = config.sampleRate / 1000;
+		lowerLimit = config.sampleRate / 1000;
 	}
-    else
-    {
-        batchSize = (int)((1. + sample->config.searchRange) * (float)config.sampleRate / (float)sample->config.expectedPitch);
+	else
+	{
+		batchSize = (int)((1. + sample->config.searchRange) * (float)config.sampleRate / (float)sample->config.expectedPitch);
 		if (batchSize > config.tripleBatchSize)
-        {
+		{
 			batchSize = config.tripleBatchSize;
 		}
-        lowerLimit = (int)((1. - sample->config.searchRange) * (float)config.sampleRate / (float)sample->config.expectedPitch);
+		lowerLimit = (int)((1. - sample->config.searchRange) * (float)config.sampleRate / (float)sample->config.expectedPitch);
 		if (lowerLimit < config.sampleRate / 1000)
 		{
 			lowerLimit = config.sampleRate / 1000;
 		}
 	}
-    /*
-    unsigned int batchStart = 0;
-    //oversized array for holding all zeroTransitions within a batch
-    unsigned int* zeroTransitions = (unsigned int*) malloc(batchSize * sizeof(unsigned int));
-    unsigned int numZeroTransitions;
-    double error;
-    unsigned int delta;
-    float bias;
-    unsigned int offset;
-    */
-    //buffer for storing pitch in pitch-synchronous format
-    //unsigned int* intermediateBuffer = (unsigned int*) malloc(ceildiv(sample->config.length, lowerLimit) * sizeof(unsigned int));
-    //unsigned int intermBufferLen = 0;
-    
+	/*
+	unsigned int batchStart = 0;
+	//oversized array for holding all zeroTransitions within a batch
+	unsigned int* zeroTransitions = (unsigned int*) malloc(batchSize * sizeof(unsigned int));
+	unsigned int numZeroTransitions;
+	double error;
+	unsigned int delta;
+	float bias;
+	unsigned int offset;
+	*/
+	//buffer for storing pitch in pitch-synchronous format
+	//unsigned int* intermediateBuffer = (unsigned int*) malloc(ceildiv(sample->config.length, lowerLimit) * sizeof(unsigned int));
+	//unsigned int intermBufferLen = 0;
+
 
 	float* smoothedWave = (float*)malloc(sample->config.length * sizeof(float));
 	float x = 0;
@@ -91,7 +91,7 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 		{
 			(markerCandidates + i)->isRoot = 0;
 		}
-		if (zeroTransitions.content[i] >= zeroTransitions.length - batchSize || i == zeroTransitions.length - 1) {
+		if (zeroTransitions.content[i] >= sample->config.length - batchSize || i == zeroTransitions.length - 1) {
 			(markerCandidates + i)->isLeaf = 1;
 		}
 		else
@@ -113,39 +113,43 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 			if (delta > batchSize) {
 				break;
 			}
-            float bias;
-            if (sample->config.expectedPitch == 0)
+			float bias;
+			if (sample->config.expectedPitch == 0)
 			{
-				bias = 1.;
+				bias = delta;
 			}
 			else
 			{
-				bias = fabsf(delta - (float)config.sampleRate / (float)sample->config.expectedPitch);
+				bias = delta * fabsf(delta - (float)config.sampleRate / (float)sample->config.expectedPitch);
 			}
 			double newError = 0;
+			double contrast = 0;
 			if (positionJ < batchSize)
 			{
 				for (int k = 0; k < batchSize; k++)
 				{
 					newError += powf(*(smoothedWave + positionI + k) - *(smoothedWave + positionJ + k), 2.) * bias;
+					contrast += *(smoothedWave + positionI + k) * sinf(2. * pi * k / delta);
 				}
 			}
 			else if (positionI >= sample->config.length - batchSize)
 			{
 				for (int k = 0; k < batchSize; k++)
 				{
-					newError += powf(*(smoothedWave + positionI - batchSize / 2 + k) - *(smoothedWave + positionJ - batchSize / 2 + k), 2.) * bias;
+					newError += powf(*(smoothedWave + positionI - k) - *(smoothedWave + positionJ - k), 2.) * bias;
+					contrast += *(smoothedWave + positionI - k) * sinf(2. * pi * k / delta);
 				}
 			}
 			else
 			{
 				for (int k = 0; k < batchSize; k++)
 				{
-					newError += powf(*(smoothedWave + positionI - k) - *(smoothedWave + positionJ - k), 2.) * bias;
+					newError += powf(*(smoothedWave + positionI - batchSize / 2 + k) - *(smoothedWave + positionJ - batchSize / 2 + k), 2.) * bias;
+					contrast += *(smoothedWave + positionI - batchSize / 2 + k) * sinf(2. * pi * k / delta);
 				}
 			}
 			if (newError + (markerCandidates + i - j)->distance < (markerCandidates + i)->distance || (markerCandidates + i)->distance == 0) {
-				(markerCandidates + i)->distance = newError + (markerCandidates + i - j)->distance;
+				(markerCandidates + i)->distance = (markerCandidates + i - j)->distance + newError / fabsf(contrast);
 				(markerCandidates + i)->previous = markerCandidates + i - j;
 			}
 		}
@@ -166,15 +170,34 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 		dynIntArray_append(&zeroTransitions, current->position);
 		current = current->previous;
 	}
-	unsigned int intermBufferLen = zeroTransitions.length;
-	unsigned int* intermediateBuffer = (unsigned int*)malloc(intermBufferLen * sizeof(unsigned int));
-	for (int i = 0; i < intermBufferLen; i++) {
-		*(intermediateBuffer + i) = zeroTransitions.content[intermBufferLen - i - 1];
+	sample->config.markerLength = zeroTransitions.length;
+	sample->pitchMarkers = (int*)malloc(zeroTransitions.length * sizeof(int));
+	for (int i = 0; i < zeroTransitions.length; i++) {
+		*(sample->pitchMarkers + i) = zeroTransitions.content[zeroTransitions.length - i - 1];
 	}
 	dynIntArray_dealloc(&zeroTransitions);
 	free(markerCandidates);
 	free(smoothedWave);
 
+
+	unsigned int cursor = 0;
+	for (int i = 0; i < sample->config.batches; i++) {
+		while (sample->pitchMarkers[cursor] <= i * config.batchSize) {
+			cursor++;
+		}
+		if (cursor == 0) {
+			*(sample->pitchDeltas + i) = sample->pitchMarkers[cursor + 1] - sample->pitchMarkers[cursor];
+		}
+		else if (cursor == sample->config.markerLength) {
+			*(sample->pitchDeltas + i) = sample->pitchMarkers[cursor - 1] - sample->pitchMarkers[cursor - 2];
+		}
+		else
+		{
+			*(sample->pitchDeltas + i) = sample->pitchMarkers[cursor] - sample->pitchMarkers[cursor - 1];
+		}
+	}
+	sample->config.pitch = median(sample->pitchDeltas, sample->config.pitchLength);
+}
 
 
 
@@ -262,7 +285,7 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
     free(zeroTransitions);
 
 	//reverse pass to improve accuracy
-    */
+    
 
 
 
@@ -272,26 +295,27 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
     int cursor2 = 0;
     //calculate "virtual" pitch-based sample length
     sample->config.pitchLength = 0;
-    for (int i = 0; i < intermBufferLen; i++) {
-        sample->config.pitchLength += *(intermediateBuffer + i);
+    for (int i = 0; i < sample->config.markerLength; i++) {
+        sample->config.pitchLength += *(sample->pitchMarkers + i);
     }
     sample->config.pitchLength /= config.batchSize;
-    sample->config.pitch /= intermBufferLen;
+    sample->config.pitch /= sample->config.markerLength;
     if (sample->config.pitchLength > sample->config.batches)
     {
         sample->config.pitchLength = sample->config.batches;
     }
     //transform from pitch-synchronous to time-synchronous space and fill average pitch field
     for (int i = 0; i < sample->config.pitchLength; i++) {
-        while(cursor2 >= (int)*(intermediateBuffer + cursor)) {
-            if (cursor < intermBufferLen - 1) {
+        while(cursor2 >= (int)*(sample->pitchMarkers + cursor)) {
+            if (cursor < sample->config.markerLength - 1) {
                 cursor++;
             }
-            cursor2 -= *(intermediateBuffer + cursor);
+            cursor2 -= *(sample->pitchMarkers + cursor);
         }
         cursor2 += config.batchSize;
-        *(sample->pitchDeltas + i) = *(intermediateBuffer + cursor);
+        *(sample->pitchDeltas + i) = *(sample->pitchMarkers + cursor);
     }
-	sample->config.pitch = median(intermediateBuffer, intermBufferLen);
-    free(intermediateBuffer);
-}
+	sample->config.pitch = median(sample->pitchMarkers, sample->config.markerLength);
+}*/
+
+

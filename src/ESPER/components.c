@@ -608,6 +608,8 @@ typedef struct
 
 void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength, evaluationPointsStruct* eval, fftw_complex* result, PitchMarkerStruct markers, cSample sample, engineCfg config)
 {
+	markers.markerLength = sample.config.markerLength;
+	markers.markers = sample.pitchMarkers;
     float* window = wave + index * config.batchSize;
     //get fitting segment of marker array
     int localMarkerStart = findIndex_double(markers.markers, markers.markerLength, index * config.batchSize) - 1;
@@ -907,7 +909,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     {
         separateVoicedUnvoicedSingleWindow(i, wave, windowLength, evals + i, combinedCoeffs, markers, sample, config);
     }
-    free(markers.markers);
+    //free(markers.markers);
     separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
     float* hannWindowInst = hannWindow(windowLength, 1. / 3.);
     separateVoicedUnvoicedFinalize(evals, combinedCoeffs, wave, unvoicedSignal, hannWindowInst, sample, config);
