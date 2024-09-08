@@ -295,21 +295,6 @@ void finalizeSpectra(cSample sample, float* lowSpectra, float* highSpectra, engi
     free(tgtSpectra);
 }
 
-//struct for holding the output of the pitch marker calculator.
-//essentially a double array with variable length.
-typedef struct
-{
-    double* markers;
-    unsigned int markerLength;
-    float* wave;
-    int waveLength;
-    dynIntArray transitionsUp;
-    dynIntArray transitionsDown;
-    dynIntArray markersUp;
-    dynIntArray markersDown;
-}
-PitchMarkerStruct;
-
 //utility function for fetching the approximate pitch of a sample at a location given in data points from the start of the sample.
 //requires the sample to have existing pitch data.
 int getLocalPitch(int position, cSample sample, engineCfg config)
@@ -333,271 +318,6 @@ int getLocalPitch(int position, cSample sample, engineCfg config)
     return *(sample.pitchDeltas + effectivePos);
 }
 
-void seedPitchMarkers(PitchMarkerStruct* markers, cSample sample, engineCfg config)
-{
-    //allocate dynarrays for markers
-    dynIntArray_init(&markers->markersUp);
-    dynIntArray_init(&markers->markersDown);
-    //determine first relevant transition
-    unsigned int offset = 0;
-    short skip = 0;
-    unsigned int candidateOffset;
-    unsigned short candidateLength;
-    int limit; //reused for various limits in the following code
-    float maxDerr = 0.;
-    float derr;
-    int maxIndex;
-    int index;
-    while (1)
-    {
-        //the length of the shorter zeroTransition array is a hard upper limit for the offset, since it is impossible to find further transition beyond it
-        if (markers->transitionsUp.length > markers->transitionsDown.length)
-        {
-            limit = markers->transitionsDown.length;
-        }
-        else
-        {
-            limit = markers->transitionsUp.length;
-        }
-        //fallback if no match is found using any possible offset
-        if (offset == limit)
-        {
-            dynIntArray_append(&markers->markersUp, *markers->transitionsUp.content);
-            dynIntArray_append(&markers->markersDown, *markers->transitionsUp.content + sample.config.pitch / 2);
-            skip = 1;
-            break;
-        }
-        //increase offset until a valid list of upTransitionCandidates for the first upwards transition is obtained
-        candidateOffset = offset;
-        //search for candidates within one expected wavelength from the current offset
-        limit = *(markers->transitionsUp.content + offset) + sample.config.pitch;
-        //limit search to the length of the waveform
-        if (*(markers->transitionsDown.content + markers->transitionsDown.length - 1) < limit)
-        {
-            limit = *(markers->transitionsDown.content + markers->transitionsDown.length - 1);
-        }
-        candidateLength = findIndex(markers->transitionsUp.content, markers->transitionsUp.length, limit) - candidateOffset;//check forpossible implications of zeroTrUp.len >? original limit
-        if (candidateLength == 0)
-        {
-            //no candidates found; increase offset and try again
-            offset++;
-            continue;
-        }
-        //one or several candidates found!
-        //select candidate with highest derivative
-        for (int i = 0; i < candidateLength; i++)
-        {
-            index = *(markers->transitionsUp.content + candidateOffset + i);
-            derr = *(markers->wave + index) - *(markers->wave + index - 1);
-            if (derr > maxDerr)
-            {
-                maxDerr = derr;
-                maxIndex = index;
-            }
-        }
-        candidateOffset = findIndex(markers->transitionsDown.content, markers->transitionsDown.length, maxIndex);
-        limit = maxIndex + getLocalPitch(maxIndex, sample, config);//check if out of bounds like with previous limit
-        candidateLength = findIndex(markers->transitionsDown.content, markers->transitionsDown.length, limit) - candidateOffset;
-        if (candidateLength > 0)
-        {
-            //one or several downwards candidates found as well!
-            dynIntArray_append(&markers->markersUp, maxIndex);
-            break;
-        }
-        //no downwards candidates found; increase offset and try again
-        offset++;
-    }
-    if (skip == 0) //skipped if the fallback function was invoked and there are not actually any downwards candidates
-    {
-        //select the downward transition candidate with the lowest derivative
-        maxDerr = 0.;
-        for (int i = 0; i < candidateLength; i++)
-        {
-            index = *(markers->transitionsDown.content + candidateOffset + i);
-            derr = *(markers->wave + index - 1) - *(markers->wave + index);
-            if (derr > maxDerr)
-            {
-                maxDerr = derr;
-                maxIndex = index;
-            }
-        }
-        dynIntArray_append(&markers->markersDown, maxIndex);
-    }
-}
-
-void findNextMarker(dynIntArray* primaryMarkers, dynIntArray* secondaryMarkers, dynIntArray* primaryTransitions, dynIntArray* secondaryTransitions, float* wave, int waveLength, cSample sample, engineCfg config)
-{
-    //up = primary
-    //down = secondary
-    int lastPrimary = *(primaryMarkers->content + primaryMarkers->length - 1);
-    int lastSecondary = *(secondaryMarkers->content + secondaryMarkers->length - 1);
-    int lastPitch = getLocalPitch(lastPrimary, sample, config);
-    float error = -1.; //-1 denotes an "infinite" error
-    float newError;
-    int transition;
-    //calculate next upwards marker
-    //fallback "transition": if there are no actual transitions within the search range, this point will be used instead
-    if (primaryMarkers->length > 1)
-    {
-        transition = lastPrimary + lastSecondary - *(secondaryMarkers->content + secondaryMarkers->length - 2);
-        if (transition <= lastSecondary)
-        {
-            transition = lastSecondary + ceildiv(lastSecondary - *(secondaryMarkers->content + secondaryMarkers->length - 2), 2);
-        }
-    }
-    else
-    {
-        transition = lastPrimary + lastPitch;
-        if (transition <= lastSecondary)
-        {
-            transition = lastSecondary + ceildiv(lastPitch, 2);
-        }
-    }
-    //ensure the transition is larger than the previous marker, even for very rapid decreases of the expected wavelength
-    //set up search range
-    int limit = lastPrimary + (1. - config.DIOTolerance) * lastPitch;
-    if (limit < lastSecondary)
-    {
-        limit = lastSecondary;
-    }
-    //start of the window of possible transitions
-    //check if limit is out of bounds (upper)
-    unsigned int start = findIndex(primaryTransitions->content, primaryTransitions->length, limit);
-    unsigned int end = start;
-    //end of the window of possible transitions
-    limit = lastPrimary + (1 + config.DIOTolerance) * lastPitch;
-    if (limit >= waveLength)
-    {
-        limit = waveLength - 1;
-    }
-    //check if limit is out of bounds (lower)
-    //load all transitions within the window into validTransitions
-    //TODO: replace validTransitions dynIntArray with pointer offsets on zeroTransitionsUp
-    while (end < primaryTransitions->length && *(primaryTransitions->content + end) <= limit)
-    {
-        end++;
-    }
-    for (int i = start; i < end; i++)
-    {
-        int tmpTransition = *(primaryTransitions->content + i);
-        int localPitch = getLocalPitch(tmpTransition, sample, config);
-        //correlate sample of one expected wavelength from current last upwards marker and candidate upwards marker
-        float* sample = (float*)malloc(localPitch * sizeof(float));
-        float* shiftedSample = (float*)malloc(localPitch * sizeof(float));
-        if (tmpTransition + localPitch >= waveLength)
-        {
-            if (localPitch > lastPrimary) {
-                continue;
-            }
-            for (int j = 0; j < localPitch; j++)
-            {
-                *(sample + j) = *(wave + lastPrimary - localPitch + j);
-                *(shiftedSample + j) = *(wave + tmpTransition - localPitch + j);
-            }
-        }
-        else
-        {
-            for (int j = 0; j < localPitch; j++)
-            {
-                *(sample + j) = *(wave + lastPrimary + j);
-                *(shiftedSample + j) = *(wave + tmpTransition + j);
-            }
-        }
-        //accept candidate with highest correlation
-        newError = 0.;
-        for (int j = 0; j < localPitch; j++)
-        {
-            newError += powf(*(sample + j) - *(shiftedSample + j), 2);
-        }
-        newError *= fabsf((float)(tmpTransition - lastPrimary - localPitch)) / (float)localPitch + config.DIOBias2;
-        if (error > newError || error == -1)
-        {
-            transition = tmpTransition;
-            error = newError;
-        }
-        free(sample);
-        free(shiftedSample);
-    }
-    dynIntArray_append(primaryMarkers, transition);
-}
-
-//calculates precise pitch markers for the padded waveform of a sample.
-//There is one marker for each vocal chord vibration, and they are pitch-synchronous.
-//The phase angle of each marker with respect to the f0 is constant, though its exact value is arbitrary and depends on the shape of the waveform.
-//This algorithm was originally based on DIO, but has since been adapted and heavily modified.
-PitchMarkerStruct calculatePitchMarkers(cSample sample, float* wave, int waveLength, engineCfg config)
-{
-    PitchMarkerStruct markers;
-    markers.wave = wave;
-    markers.waveLength = waveLength;
-    //get all zero transitions and load them into dynamic arrays
-    dynIntArray_init(&markers.transitionsUp);
-    dynIntArray_init(&markers.transitionsDown);
-    for (int i = 2; i < waveLength; i++)
-    {
-        if ((*(wave + i - 1) < 0) && (*(wave + i) >= 0))
-        {
-            dynIntArray_append(&markers.transitionsUp, i);
-        }
-        if ((*(wave + i - 1) >= 0) && (*(wave + i) < 0))
-        {
-            dynIntArray_append(&markers.transitionsDown, i);
-        }
-    }
-    //check if there are enough transitions to continue
-    if (markers.transitionsUp.length <= 1 || markers.transitionsDown.length <= 1)
-    {
-        //not enough transitions; return two markers describing the approximate pitch
-        markers.markers = (double*) malloc (2 * sizeof(double));
-        *markers.markers = 0.;
-        *(markers.markers + 1) = (double)sample.config.pitch;
-        markers.markerLength = 2;
-        dynIntArray_dealloc(&markers.transitionsUp);
-        dynIntArray_dealloc(&markers.transitionsDown);
-        return markers;
-    }
-    seedPitchMarkers(&markers, sample, config);
-    //we now have an initial upTransitionMarker, followed by an initial downTransitionMarker within one expected wavelength.
-    //With this, we can jump-start the algorithm.
-    //loops until the entire sample is covered with markers
-    while (*(markers.markersDown.content + markers.markersDown.length - 1) < markers.waveLength - (int)(*(sample.pitchDeltas + sample.config.pitchLength - 1) * config.DIOLastWinTolerance))//check for negative out-of-bounds
-    {
-        findNextMarker(&markers.markersUp, &markers.markersDown, &markers.transitionsUp, &markers.transitionsDown, markers.wave, markers.waveLength, sample, config);
-        findNextMarker(&markers.markersDown, &markers.markersUp, &markers.transitionsDown, &markers.transitionsUp, markers.wave, markers.waveLength, sample, config);
-    }
-    dynIntArray_dealloc(&markers.transitionsUp);
-    dynIntArray_dealloc(&markers.transitionsDown);
-
-    //truncate final markers, if necessary
-    if (*(markers.markersDown.content + markers.markersDown.length - 1) >= waveLength)
-    {
-        markers.markersUp.length--;
-        markers.markersDown.length--;
-    }
-    //check if sufficient markers have been found, and use fallback if that is not the case
-    if (markers.markersUp.length <= 1)
-    {
-        dynIntArray_dealloc(&markers.markersUp);
-        dynIntArray_dealloc(&markers.markersDown);
-        markers.markers = (double*) malloc (2 * sizeof(double));
-        *markers.markers = 0;
-        *(markers.markers + 1) = sample.config.pitch;
-        markers.markerLength = 2;
-        return markers;
-    }
-    //fill output struct with average between upwards and downwards marker for each wavelength
-    markers.markerLength = markers.markersUp.length;
-    markers.markers = (double*) malloc(markers.markerLength * sizeof(double));
-    for (int i = 0; i < markers.markerLength; i++)
-    {
-        *(markers.markers + i) = (double)(*(markers.markersUp.content + i) + *(markers.markersDown.content + i)) / 2.;
-        *(markers.markers + i) = floor(*(markers.markers + i));// Last resort option should 1-sample timing mismatch between wave and re-synthesized voiced signal not be resolvable otherwise
-    }
-    dynIntArray_dealloc(&markers.markersUp);
-    dynIntArray_dealloc(&markers.markersDown);
-    return markers;
-}
-
 typedef struct
 {
     float* evaluationPoints;
@@ -606,25 +326,23 @@ typedef struct
     int size;
 } evaluationPointsStruct;
 
-void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength, evaluationPointsStruct* eval, fftw_complex* result, PitchMarkerStruct markers, cSample sample, engineCfg config)
+void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength, evaluationPointsStruct* eval, fftw_complex* result, cSample sample, engineCfg config)
 {
-	markers.markerLength = sample.config.markerLength;
-	markers.markers = sample.pitchMarkers;
     float* window = wave + index * config.batchSize;
     //get fitting segment of marker array
-    int localMarkerStart = findIndex_double(markers.markers, markers.markerLength, index * config.batchSize) - 1;
+    int localMarkerStart = findIndex(sample.pitchMarkers, sample.config.markerLength, index * config.batchSize) - 1;
     if (localMarkerStart < 0)
     {
         localMarkerStart = 0;
     }
-    int localMarkerEnd = findIndex_double(markers.markers, markers.markerLength, index * config.batchSize + config.tripleBatchSize * config.filterBSMult);
-    if (localMarkerEnd >= markers.markerLength)
+    int localMarkerEnd = findIndex(sample.pitchMarkers, sample.config.markerLength, index * config.batchSize + config.tripleBatchSize * config.filterBSMult);
+    if (localMarkerEnd >= sample.config.markerLength)
     {
-        localMarkerEnd = markers.markerLength - 1;
+        localMarkerEnd = sample.config.markerLength - 1;
     }
-    float* offsetWindow = wave + (int)*(markers.markers + localMarkerStart);
-    int offsetWindowLength = (int)*(markers.markers + localMarkerEnd) - (int)floor(*(markers.markers + localMarkerStart)) + 1;
-    int windowOffset = index * config.batchSize - (int)floor(*(markers.markers + localMarkerStart));
+    float* offsetWindow = wave + (int)*(sample.pitchMarkers + localMarkerStart);
+    int offsetWindowLength = (int)*(sample.pitchMarkers + localMarkerEnd) - (int)floor(*(sample.pitchMarkers + localMarkerStart)) + 1;
+    int windowOffset = index * config.batchSize - (int)floor(*(sample.pitchMarkers + localMarkerStart));
     int markerLength = localMarkerEnd - localMarkerStart + 1;
     float* evaluationPoints;
     //check if there are sufficient markers to perform pitch-synchronous analysis
@@ -658,7 +376,7 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
         float* markerSpace = (float*)malloc(markerLength * sizeof(float));
         for (int j = 0; j < markerLength; j++)
         {
-            *(localMarkers + j) = *(markers.markers + localMarkerStart + j) - (int)ceil(*(markers.markers + localMarkerStart));
+            *(localMarkers + j) = *(sample.pitchMarkers + localMarkerStart + j) - (int)ceil(*(sample.pitchMarkers + localMarkerStart));
             *(markerSpace + j) = j;
         }
         float* windowSpace = (float*)malloc(offsetWindowLength * sizeof(float));
@@ -902,12 +620,11 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         *(unvoicedSignal + i) = 0.f;
     }
     //Get DIO Pitch markers
-    PitchMarkerStruct markers = calculatePitchMarkers(sample, wave, waveLength, config);
     fftw_complex* combinedCoeffs = (fftw_complex*)malloc(sample.config.batches * (config.nHarmonics + 2) * sizeof(fftw_complex));
     evaluationPointsStruct* evals = (evaluationPointsStruct*)malloc(sample.config.batches * sizeof(evaluationPointsStruct));
     for (int i = 0; i < sample.config.batches; i++)
     {
-        separateVoicedUnvoicedSingleWindow(i, wave, windowLength, evals + i, combinedCoeffs, markers, sample, config);
+        separateVoicedUnvoicedSingleWindow(i, wave, windowLength, evals + i, combinedCoeffs, sample, config);
     }
     //free(markers.markers);
     separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);

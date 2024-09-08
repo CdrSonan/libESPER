@@ -65,16 +65,21 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 	float v = 0;
 	float a = 0;
 	for (int i = 0; i < sample->config.length; i++) {
-		a = *(sample->waveform + i) - 0.5 * x - 0.5 * v;
+		a = *(sample->waveform + i) - 0.1 * x - 0.1 * v;
 		v += a;
 		x += v;
 		*(smoothedWave + i) = x;
 	}
+	FILE* debugLog = fopen("debugLog.txt", "w");
+	for (int i = 0; i < sample->config.length; i++) {
+		fprintf(debugLog, "%f\n", *(smoothedWave + i));
+	}
+	fclose(debugLog);
 
 	dynIntArray zeroTransitions;
 	dynIntArray_init(&zeroTransitions);
 	for (int i = 1; i < sample->config.length; i++) {
-		if (*(smoothedWave + i - 1) < 0 && *(smoothedWave + i) > 0) {
+		if (*(smoothedWave + i - 1) < 0 && *(smoothedWave + i) >= 0) {
 			dynIntArray_append(&zeroTransitions, i);
 		}
 	}
@@ -99,6 +104,13 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 			(markerCandidates + i)->isLeaf = 0;
 		}
 	}
+
+	//open debug log file
+	FILE* debugLog_errs = fopen("debugLog_errs.txt", "w");
+	FILE* debugLog_cntrs = fopen("debugLog_cntrs.txt", "w");
+	FILE* debugLog_dists = fopen("debugLog_dists.txt", "w");
+
+
 	for (int i = 0; i < markerCandidateLength; i++) {
 		if ((markerCandidates + i)->isRoot) {
 			continue;
@@ -116,17 +128,17 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 			float bias;
 			if (sample->config.expectedPitch == 0)
 			{
-				bias = delta;
+				bias = 1.;
 			}
 			else
 			{
-				bias = delta * fabsf(delta - (float)config.sampleRate / (float)sample->config.expectedPitch);
+				bias = fabsf(delta - (float)config.sampleRate / (float)sample->config.expectedPitch);
 			}
 			double newError = 0;
 			double contrast = 0;
 			if (positionJ < batchSize)
 			{
-				for (int k = 0; k < batchSize; k++)
+				for (int k = 0; k < delta; k++)
 				{
 					newError += powf(*(smoothedWave + positionI + k) - *(smoothedWave + positionJ + k), 2.) * bias;
 					contrast += *(smoothedWave + positionI + k) * sinf(2. * pi * k / delta);
@@ -134,7 +146,7 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 			}
 			else if (positionI >= sample->config.length - batchSize)
 			{
-				for (int k = 0; k < batchSize; k++)
+				for (int k = 0; k < delta; k++)
 				{
 					newError += powf(*(smoothedWave + positionI - k) - *(smoothedWave + positionJ - k), 2.) * bias;
 					contrast += *(smoothedWave + positionI - k) * sinf(2. * pi * k / delta);
@@ -142,18 +154,29 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 			}
 			else
 			{
-				for (int k = 0; k < batchSize; k++)
+				for (int k = 0; k < delta; k++)
 				{
-					newError += powf(*(smoothedWave + positionI - batchSize / 2 + k) - *(smoothedWave + positionJ - batchSize / 2 + k), 2.) * bias;
-					contrast += *(smoothedWave + positionI - batchSize / 2 + k) * sinf(2. * pi * k / delta);
+					newError += powf(*(smoothedWave + positionI - delta / 2 + k) - *(smoothedWave + positionJ - delta / 2 + k), 2.) * bias;
+					contrast += *(smoothedWave + positionI - delta / 2 + k) * sinf(2. * pi * k / delta);
 				}
 			}
-			if (newError + (markerCandidates + i - j)->distance < (markerCandidates + i)->distance || (markerCandidates + i)->distance == 0) {
+
+			//debug output
+			fprintf(debugLog_errs, "%f ", newError);
+			fprintf(debugLog_cntrs, "%f ", fabsf(contrast));
+
+			if ((markerCandidates + i - j)->distance + newError / fabsf(contrast) < (markerCandidates + i)->distance || (markerCandidates + i)->distance == 0) {
 				(markerCandidates + i)->distance = (markerCandidates + i - j)->distance + newError / fabsf(contrast);
 				(markerCandidates + i)->previous = markerCandidates + i - j;
 			}
 		}
+		fprintf(debugLog_errs, "\n");
+		fprintf(debugLog_cntrs, "\n");
+		fprintf(debugLog_dists, "%f\n", (markerCandidates + i)->distance);
 	}
+	fclose(debugLog_errs);
+	fclose(debugLog_cntrs);
+	fclose(debugLog_dists);
 	zeroTransitions.length = 0;
 	MarkerCandidate* currentBase = markerCandidates + markerCandidateLength - 1;
 	MarkerCandidate* current = currentBase;
@@ -178,6 +201,12 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 	dynIntArray_dealloc(&zeroTransitions);
 	free(markerCandidates);
 	free(smoothedWave);
+
+	FILE* debugLog_markers = fopen("debugLog_markers.txt", "w");
+	for (int i = 0; i < sample->config.markerLength; i++) {
+		fprintf(debugLog_markers, "%d\n", *(sample->pitchMarkers + i));
+	}
+	fclose(debugLog_markers);
 
 
 	unsigned int cursor = 0;
