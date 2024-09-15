@@ -409,6 +409,7 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int windowLength
     for (int i = 0; i < offsetWindowLength; i++)
     {
         (*(combinedNUFFT.f + i))[0] = *(offsetWindow + i) * *(hannWindowInst + i);
+        //(*(combinedNUFFT.f + i))[0] = *(offsetWindow + i)/ (float)offsetWindowLength;
         (*(combinedNUFFT.f + i))[1] = 0.;
     }
     free(hannWindowInst);
@@ -574,7 +575,7 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
         nfft_trafo_1d(&inverseNUFFT);
         for (int j = 0; j < config.tripleBatchSize * config.filterBSMult; j++)
         {
-            *(unvoicedSignal + i * config.batchSize + j) += (*(wave + i * config.batchSize + j) - inverseNUFFT.f[j][0]) * *(hannWindowInst + j);
+			*(unvoicedSignal + i * config.batchSize + j) += (*(wave + i * config.batchSize + j) - inverseNUFFT.f[j][0]) * *(hannWindowInst + j);
         }
         nfft_finalize(&inverseNUFFT);
     }
