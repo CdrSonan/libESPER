@@ -100,18 +100,24 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 		}
 	}
 
-	for (int i = 0; i < markerCandidateLength; i++) {
-		if ((markerCandidates + i)->isRoot) {
+	for (int i = 0; i < markerCandidateLength; i++)
+	{
+		if ((markerCandidates + i)->isRoot)
+		{
 			continue;
 		}
-		for (int j = 1; j <= i; j++) {
+		int isValid = 0;
+		for (int j = 1; j <= i; j++)
+		{
 			unsigned int positionI = (markerCandidates + i)->position;
 			unsigned int positionJ = (markerCandidates + i - j)->position;
 			unsigned int delta = positionI - positionJ;
-			if (delta < lowerLimit) {
+			if (delta < lowerLimit)
+			{
 				continue;
 			}
-			if (delta > batchSize) {
+			if ((delta > batchSize) && isValid == 1)
+			{
 				break;
 			}
 			float bias;
@@ -154,6 +160,7 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 				(markerCandidates + i)->distance = (markerCandidates + i - j)->distance + newError / fabsf(contrast);
 				(markerCandidates + i)->previous = markerCandidates + i - j;
 			}
+			isValid = 1;
 		}
 	}
 	zeroTransitions.length = 0;
@@ -173,7 +180,6 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 		current = current->previous;
 	}
 	sample->config.markerLength = zeroTransitions.length;
-	sample->pitchMarkers = (int*)malloc(zeroTransitions.length * sizeof(int));
 	for (int i = 0; i < zeroTransitions.length; i++) {
 		*(sample->pitchMarkers + i) = zeroTransitions.content[zeroTransitions.length - i - 1];
 	}
@@ -183,7 +189,7 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 
 	unsigned int cursor = 0;
 	for (int i = 0; i < sample->config.batches; i++) {
-		while (sample->pitchMarkers[cursor] <= i * config.batchSize) {
+		while ((sample->pitchMarkers[cursor] <= i * config.batchSize) && (cursor < sample->config.markerLength)) {
 			cursor++;
 		}
 		if (cursor == 0) {

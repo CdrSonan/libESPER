@@ -471,7 +471,7 @@ void separateVoicedUnvoicedPostProc(fftw_complex* result, cSample sample, engine
     }
     for (int i = 0; i < config.halfHarmonics; i++)
     {
-        (*(result + 2 * i + 1))[1] =
+        (*(result + 2 * i + 1))[1] = 
             (
                 (*(result + 2 * i + 1))[0] * 2. +
                 (*(result + (config.nHarmonics + 2) + 2 * i + 1))[0]
@@ -596,6 +596,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
             }
         }
         stft_inpl(sample.waveform, sample.config.length, config, sample.excitation);
+		return;
     }
     // extended waveform buffer aligned with batch size
     int padLength = config.halfTripleBatchSize * config.filterBSMult;
@@ -629,7 +630,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     }
     //free(markers.markers);
     separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
-    float* hannWindowInst = hannWindow(windowLength, 1. / 3.);
+    float* hannWindowInst = hannWindow(windowLength, 0.33);
     separateVoicedUnvoicedFinalize(evals, combinedCoeffs, wave, unvoicedSignal, hannWindowInst, sample, config);
     free(wave);
     free(combinedCoeffs);
