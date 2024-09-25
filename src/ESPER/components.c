@@ -516,7 +516,7 @@ void separateVoicedUnvoicedFinalize(evaluationPointsStruct* evals, fftw_complex*
         float preIncrement = *((*(evals + i)).evaluationPoints + 1) - *((*(evals + i)).evaluationPoints);
         for (int j = 0; j < -(*(evals + i)).offset; j++)
         {
-            inverseNUFFT.x[j] = fmodf((j - (*(evals + i)).offset) * preIncrement + (*(evals + i)).offset, 1.f); //added (*(evals + i)).offset) because j mod 1 = 0 and it prevents value from going negative
+            inverseNUFFT.x[j] = fmodf((j - (*(evals + i)).offset) * preIncrement - (*(evals + i)).offset, 1.f); //added -(*(evals + i)).offset) because j mod 1 = 0 and it prevents value from going negative
             if (inverseNUFFT.x[j] > 0.5)
             {
                 inverseNUFFT.x[j] -= 1.;
