@@ -104,11 +104,19 @@ void LIBESPER_CDECL resampleSpecharm(float* avgSpecharm, float* specharm, int le
         {
             *(buffer + i * config.frameSize + j) *= multiplier;
             *(buffer + i * config.frameSize + j) += *(avgSpecharm + j);
+			if (*(buffer + i * config.frameSize + j) < 0)
+			{
+				*(buffer + i * config.frameSize + j) = 0;
+			}
         }
         for (int j = 2 * config.halfHarmonics; j < config.frameSize; j++)
         {
             *(buffer + i * config.frameSize + j) *= multiplier;
             *(buffer + i * config.frameSize + j) += *(avgSpecharm - config.halfHarmonics + j);//j start offset and subtraction result in addition of halfHarmonics when combined
+            if (*(buffer + i * config.frameSize + j) < 0)
+            {
+                *(buffer + i * config.frameSize + j) = 0;
+            }
         }
     }
     //fade in sample if required

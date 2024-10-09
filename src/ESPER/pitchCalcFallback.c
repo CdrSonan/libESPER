@@ -156,8 +156,8 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 				}
 			}
 
-			if ((markerCandidates + i - j)->distance + newError / fabsf(contrast) < (markerCandidates + i)->distance || (markerCandidates + i)->distance == 0) {
-				(markerCandidates + i)->distance = (markerCandidates + i - j)->distance + newError / fabsf(contrast);
+			if ((markerCandidates + i - j)->distance + newError / powf(contrast, 2.) < (markerCandidates + i)->distance || (markerCandidates + i)->distance == 0) {
+				(markerCandidates + i)->distance = (markerCandidates + i - j)->distance + newError / powf(contrast, 2.);
 				(markerCandidates + i)->previous = markerCandidates + i - j;
 			}
 			isValid = 1;
