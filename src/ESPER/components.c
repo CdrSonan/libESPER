@@ -320,8 +320,8 @@ int getLocalPitch(int position, cSample sample, engineCfg config)
 
 float* getEvaluationPoints(int start, int end, float* wave, cSample sample, engineCfg config)
 {
-    float* localMarkers = (float*)malloc(end - start * sizeof(float));
-    float* markerSpace = (float*)malloc(end - start * sizeof(float));
+    float* localMarkers = (float*)malloc((end - start) * sizeof(float));
+    float* markerSpace = (float*)malloc((end - start) * sizeof(float));
     for (int j = 0; j < end - start; j++)
     {
         *(localMarkers + j) = *(sample.pitchMarkers + start + j) - (int)ceil(*(sample.pitchMarkers + start));
@@ -338,6 +338,7 @@ float* getEvaluationPoints(int start, int end, float* wave, cSample sample, engi
     free(localMarkers);
     free(markerSpace);
     free(windowSpace);
+	return evaluationPoints;
 }
 
 void separateVoicedUnvoicedSingleWindow(int index, float* wave, float* evaluationPoints, fftw_complex* result, cSample sample, engineCfg config)
@@ -444,7 +445,7 @@ void separateVoicedUnvoicedPostProc(fftw_complex* result, cSample sample, engine
     }
 }
 
-void constructVoicedSignal(float* evaluationPoints, fftw_complex* result, float* wave, cSample sample, engineCfg config)
+void constructVoicedSignal(fftw_complex* result, float* wave, cSample sample, engineCfg config)
 {
 	int windowStart = 0;
     int windowEnd = config.tripleBatchSize;
@@ -467,65 +468,82 @@ void constructVoicedSignal(float* evaluationPoints, fftw_complex* result, float*
         }
         if (windowPoints.length == 0)
         {
-            int previous = max(0, markerStart - 1);
-            int next = min(sample.config.markerLength - 1, markerEnd);
+            int previous = markerStart - 1;
+			if (previous < 0)
+			{
+				previous = 0;
+			}
+            int next = markerEnd;
+			if (next >= sample.config.markerLength)
+			{
+				next = sample.config.markerLength - 1;
+			}
             dynIntArray_append(&windowPoints, previous);
             dynIntArray_append(&windowPoints, next);
         }
-        //TODO: average and load into sample.specharm
         windowStart += config.batchSize;
         windowEnd += config.batchSize;
-    }
-	dynIntArray_dealloc(&windowPoints);
-
-
-
-		int start = *(sample.pitchMarkers + i);
-		int end = *(sample.pitchMarkers + i + 1);
-		windowPoints.length = 0;
-		while (startWindow < end)
-		{
-			dynIntArray_append(&windowPoints, startWindow);
-			startWindow += config.batchSize;
-		}
-		dynIntArray_dealloc(&windowPoints);
         for (int j = 0; j < config.halfHarmonics; j++)
         {
-			float principalPhase = cpxArgd(*(result + i * (config.nHarmonics + 2) + config.nHarmonics - 2));
-            interp_inpl(x, y, windowPoints.content, len, windowPoints.length, voicedSignal);
-        }
-
-    for (int i = 0; i < sample.config.batches; i++)
-    {
-        float principalPhase = cpxArgd(*(result + i * (config.nHarmonics + 2) + config.nHarmonics - 2));
-        for (int j = 0; j < config.halfHarmonics; j++)
-        {
-            float reducer = fmaxf((*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[0], (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[1]) * sample.config.voicedThrh;
-            *(sample.specharm + i * config.frameSize + config.halfHarmonics - 1 - j) = fmaxf(cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - reducer, 0.) * 2.;
-            *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j)) - (float)(config.halfHarmonics - j - 1) * principalPhase;
-            *(sample.specharm + i * config.frameSize + config.halfHarmonics) = 0.;
-            *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = fmodf(fmodf(*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j), 2. * pi) + 2. * pi, 2. * pi);
+            float real = 0.;
+		    float imag = 0.;
+            for (int k = 0; k < windowPoints.length; k++)
+            {
+			    int coord = *(windowPoints.content + k);
+			    real += *(result + coord * (config.nHarmonics + 2) + 2 * j)[0];
+			    imag += *(result + coord * (config.nHarmonics + 2) + 2 * j)[1];
+            }
+		    real /= windowPoints.length;
+		    imag /= windowPoints.length;
+			fftw_complex cpx = { real, imag };
+			*(sample.specharm + i * config.frameSize + config.halfHarmonics - 1 - j) = cpxAbsd(cpx) * 2.;
+            *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = cpxArgd(cpx);
             if (*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) > pi)
             {
                 *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) -= 2. * pi;
             }
+        }
+        dynIntArray_dealloc(&windowPoints);
+		float principalPhase = *(sample.specharm + i * config.frameSize + config.halfHarmonics + 1);
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+			*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) -= (float)(config.halfHarmonics - j - 1) * principalPhase;
         }
     }
 }
 void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * result, float* wave, float* unvoicedSignal, cSample sample, engineCfg config)
 {
     //TODO: add first and last window edge cases
-	for (int i = 1; i < sample.config.markerLength - 2; i++)
+	for (int i = 0; i < sample.config.markerLength - 1; i++)
     {
         nfft_plan inverseNUFFT;
-		int start_inner = *(sample.pitchMarkers + i);
-		int end_inner = *(sample.pitchMarkers + i + 1);
-		int start_outer = 0.75 * *(sample.pitchMarkers + i) + 0.25 * *(sample.pitchMarkers + i - 1);
-		int end_outer = 0.75 * *(sample.pitchMarkers + i + 1) + 0.25 * *(sample.pitchMarkers + i + 2);
+        int start_inner;
+        int start_outer;
+        if (i == 0)
+		{
+			start_inner = 0;
+			start_outer = 0;
+		}
+        else
+        {
+			start_inner = 0.75 * *(sample.pitchMarkers + i) + 0.25 * *(sample.pitchMarkers + i + 1);
+            start_outer = 0.75 * *(sample.pitchMarkers + i) + 0.25 * *(sample.pitchMarkers + i - 1);
+        }
+        int end_inner;
+		int end_outer;
+		if (i == sample.config.markerLength - 1)
+		{
+			end_inner = sample.config.length;
+			end_outer = sample.config.length;
+		}
+        else
+		{
+			end_inner = 0.75 * *(sample.pitchMarkers + i + 1) + 0.25 * *(sample.pitchMarkers + i);
+			end_outer = 0.75 * *(sample.pitchMarkers + i + 1) + 0.25 * *(sample.pitchMarkers + i + 2);
+		}
 		int length_inner = end_inner - start_inner;
 		int length_outer = end_outer - start_outer;
         nfft_init_1d(&inverseNUFFT, config.nHarmonics, length_outer);
-        
         for (int j = 0; j < length_outer; j++)
         {
             inverseNUFFT.x[j] = *(evaluationPoints + start_outer + j);
@@ -608,6 +626,10 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     fftw_complex* combinedCoeffs = (fftw_complex*)malloc(sample.config.batches * (config.nHarmonics + 2) * sizeof(fftw_complex));
 	float* evaluationPoints = (float*)malloc(waveLength * sizeof(float));
     float* evalPart;
+	for (int i = 0; i < *(sample.pitchMarkers); i++)
+	{
+		*(evaluationPoints + i) = (float)i / (float)*(sample.pitchMarkers);
+	}
 	evalPart = getEvaluationPoints(0, 8, wave, sample, config);
     for (int i = 0; i < *(sample.pitchMarkers + 7); i++)
     {
@@ -616,31 +638,38 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
 	free(evalPart);
     for (int i = 6; i < sample.config.markerLength; i += 6)
     { 
-		if (i + 8 >= sample.config.markerLength)
+		if (i >= sample.config.markerLength - 9)
 		{
 			break;
 		}
 		evalPart = getEvaluationPoints(i, i + 8, wave, sample, config);
         for (int j = *(sample.pitchMarkers + i + 1); j < *(sample.pitchMarkers + i + 7); j++)
         {
-            *(evaluationPoints + j) = fmodf(*(evalPart + j), 1.);
+            *(evaluationPoints + j) = fmodf(*(evalPart + j - *(sample.pitchMarkers + i + 1)), 1.);
         }
 		free(evalPart);
     }
-	evalPart = getEvaluationPoints(sample.config.markerLength - 8, sample.config.markerLength, wave, sample, config);
-	for (int i = *(sample.pitchMarkers + sample.config.markerLength - 7); i < waveLength; i++)
+	evalPart = getEvaluationPoints(sample.config.markerLength - 9, sample.config.markerLength - 1, wave, sample, config);
+	for (int i = *(sample.pitchMarkers + sample.config.markerLength - 8); i < waveLength; i++)
 	{
-		*(evaluationPoints + i) = fmodf(*(evalPart + i), 1.);
+		*(evaluationPoints + i) = fmodf(*(evalPart + i - *(sample.pitchMarkers + sample.config.markerLength - 7)), 1.);
 	}
 	free(evalPart);
+	int lastMarker = *(sample.pitchMarkers + sample.config.markerLength - 1);
+	int postLength = sample.config.length - *(sample.pitchMarkers + sample.config.markerLength - 1);
+	for (int i = 0; i < postLength; i++)
+	{
+		*(evaluationPoints + lastMarker + i) = (float)i / (float)postLength;
+	}
     for (int i = 0; i < sample.config.markerLength - 1; i++)
     {
         separateVoicedUnvoicedSingleWindow(i, wave, evaluationPoints, combinedCoeffs, sample, config);
     }
     separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
-
-    separateVoicedUnvoicedFinalize(evals, combinedCoeffs, wave, unvoicedSignal, hannWindowInst, sample, config);
+	constructVoicedSignal(combinedCoeffs, wave, sample, config);
+	constructUnvoicedSignal(evaluationPoints, combinedCoeffs, wave, unvoicedSignal, sample, config);
     free(wave);
+	free(evaluationPoints);
     free(combinedCoeffs);
     stft_inpl(unvoicedSignal + padLength, sample.config.length, config, sample.excitation);
     free(unvoicedSignal);
