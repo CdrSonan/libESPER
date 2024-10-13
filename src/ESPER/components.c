@@ -498,18 +498,23 @@ void constructVoicedSignal(fftw_complex* result, float* wave, cSample sample, en
 			fftw_complex cpx = { real, imag };
 			*(sample.specharm + i * config.frameSize + config.halfHarmonics - 1 - j) = cpxAbsd(cpx) * 2.;
             *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = cpxArgd(cpx);
-            if (*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) > pi)
-            {
-                *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) -= 2. * pi;
-            }
         }
-        dynIntArray_dealloc(&windowPoints);
 		float principalPhase = *(sample.specharm + i * config.frameSize + config.halfHarmonics + 1);
         for (int j = 0; j < config.halfHarmonics; j++)
         {
 			*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) -= (float)(config.halfHarmonics - j - 1) * principalPhase;
+			*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = fmodf(*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j), 2. * pi);
+            if (*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) > pi)
+            {
+                *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) -= 2. * pi;
+            }
+			if (*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) < -pi)
+			{
+				*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) += 2. * pi;
+			}
         }
     }
+    dynIntArray_dealloc(&windowPoints);
 }
 void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * result, float* wave, float* unvoicedSignal, cSample sample, engineCfg config)
 {
@@ -531,7 +536,7 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * result, flo
         }
         int end_inner;
 		int end_outer;
-		if (i == sample.config.markerLength - 1)
+		if (i == sample.config.markerLength - 2)
 		{
 			end_inner = sample.config.length;
 			end_outer = sample.config.length;
@@ -623,7 +628,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
         *(unvoicedSignal + i) = 0.f;
     }
     //Get DIO Pitch markers
-    fftw_complex* combinedCoeffs = (fftw_complex*)malloc(sample.config.batches * (config.nHarmonics + 2) * sizeof(fftw_complex));
+    fftw_complex* combinedCoeffs = (fftw_complex*)malloc(sample.config.markerLength * (config.nHarmonics + 2) * sizeof(fftw_complex));
 	float* evaluationPoints = (float*)malloc(waveLength * sizeof(float));
     float* evalPart;
 	for (int i = 0; i < *(sample.pitchMarkers); i++)
@@ -631,9 +636,9 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
 		*(evaluationPoints + i) = (float)i / (float)*(sample.pitchMarkers);
 	}
 	evalPart = getEvaluationPoints(0, 8, wave, sample, config);
-    for (int i = 0; i < *(sample.pitchMarkers + 7); i++)
+    for (int i = *(sample.pitchMarkers); i < *(sample.pitchMarkers + 7); i++)
     {
-		*(evaluationPoints + i) = fmodf(*(evalPart + i), 1.);
+		*(evaluationPoints + i) = fmodf(*(evalPart + i - *(sample.pitchMarkers)), 1.);
     }
 	free(evalPart);
     for (int i = 6; i < sample.config.markerLength; i += 6)
@@ -652,7 +657,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
 	evalPart = getEvaluationPoints(sample.config.markerLength - 9, sample.config.markerLength - 1, wave, sample, config);
 	for (int i = *(sample.pitchMarkers + sample.config.markerLength - 8); i < waveLength; i++)
 	{
-		*(evaluationPoints + i) = fmodf(*(evalPart + i - *(sample.pitchMarkers + sample.config.markerLength - 7)), 1.);
+		*(evaluationPoints + i) = fmodf(*(evalPart + i - *(sample.pitchMarkers + sample.config.markerLength - 8)), 1.);
 	}
 	free(evalPart);
 	int lastMarker = *(sample.pitchMarkers + sample.config.markerLength - 1);
@@ -667,7 +672,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     }
     separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
 	constructVoicedSignal(combinedCoeffs, wave, sample, config);
-	constructUnvoicedSignal(evaluationPoints, combinedCoeffs, wave, unvoicedSignal, sample, config);
+	//constructUnvoicedSignal(evaluationPoints, combinedCoeffs, wave, unvoicedSignal, sample, config);
     free(wave);
 	free(evaluationPoints);
     free(combinedCoeffs);
