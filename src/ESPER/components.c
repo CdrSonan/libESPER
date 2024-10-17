@@ -515,10 +515,18 @@ void constructVoicedSignal(fftw_complex* result, float* wave, cSample sample, en
         while (*(sample.pitchMarkers + markerStart) < windowStart)
         {
             markerStart++;
+			if (markerStart >= sample.config.markerLength - 1)
+			{
+				break;
+			}
         }
         markerEnd = markerStart;
         while (*(sample.pitchMarkers + markerEnd) < windowEnd)
         {
+            if (markerEnd >= sample.config.markerLength - 1)
+            {
+                break;
+            }
             dynIntArray_append(&windowPoints, markerEnd);
             markerEnd++;
         }
