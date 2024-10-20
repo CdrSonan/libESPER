@@ -408,8 +408,8 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int waveLength, 
     nfft_adjoint_1d(&combinedNUFFT);
     for (int i = 0; i < config.nHarmonics + 2; i++)
     {
-        (*(result + index * (config.nHarmonics + 2) + i))[0] = (*(combinedNUFFT.f_hat + i))[0];
-        (*(result + index * (config.nHarmonics + 2) + i))[1] = (*(combinedNUFFT.f_hat + i))[1];
+        (*(result + index * (config.nHarmonics + 2) + i))[0] = (*(combinedNUFFT.f_hat + i))[0] * 2.;
+        (*(result + index * (config.nHarmonics + 2) + i))[1] = (*(combinedNUFFT.f_hat + i))[1] * 2.;
     }
     nfft_finalize(&combinedNUFFT);
 }
@@ -587,7 +587,7 @@ void constructVoicedSignal(fftw_complex* result, float* wave, cSample sample, en
     }
     dynIntArray_dealloc(&windowPoints);
 }
-void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * result, float* wave, float* unvoicedSignal, cSample sample, engineCfg config)
+void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * result, float* wave, int waveLength, float* unvoicedSignal, cSample sample, engineCfg config)
 {
     //TODO: add first and last window edge cases
 	for (int i = 0; i < sample.config.markerLength - 1; i++)
@@ -609,8 +609,8 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * result, flo
 		int end_outer;
 		if (i == sample.config.markerLength - 2)
 		{
-			end_inner = sample.config.length;
-			end_outer = sample.config.length;
+			end_inner = waveLength;
+			end_outer = waveLength;
 		}
         else
 		{
@@ -729,13 +729,13 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
 		free(evalPart);
     }
 	evalPart = getEvaluationPoints(sample.config.markerLength - 9, sample.config.markerLength - 1, wave, sample, config);
-	for (int i = *(sample.pitchMarkers + sample.config.markerLength - 8); i < waveLength; i++)
+	for (int i = *(sample.pitchMarkers + sample.config.markerLength - 8); i < *(sample.pitchMarkers + sample.config.markerLength - 1); i++)
 	{
 		*(evaluationPoints + i) = fmodf(*(evalPart + i - *(sample.pitchMarkers + sample.config.markerLength - 8)), 1.);
 	}
 	free(evalPart);
 	int lastMarker = *(sample.pitchMarkers + sample.config.markerLength - 1);
-	int postLength = sample.config.length - *(sample.pitchMarkers + sample.config.markerLength - 1);
+	int postLength = waveLength - *(sample.pitchMarkers + sample.config.markerLength - 1);
 	for (int i = 0; i < postLength; i++)
 	{
 		*(evaluationPoints + lastMarker + i) = (float)i / (float)postLength;
@@ -746,7 +746,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     }
     separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
 	constructVoicedSignal(combinedCoeffs, wave, sample, config);
-	constructUnvoicedSignal(evaluationPoints, combinedCoeffs, wave, unvoicedSignal, sample, config);
+	constructUnvoicedSignal(evaluationPoints, combinedCoeffs, wave, waveLength, unvoicedSignal, sample, config);
     free(wave);
 	free(evaluationPoints);
     free(combinedCoeffs);
