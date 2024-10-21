@@ -378,7 +378,7 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int waveLength, 
     nfft_init_1d(&combinedNUFFT, config.nHarmonics * 2, windowLength + previousWindowLength + nextWindowLength);
 	for (int i = 0; i < previousWindowLength; i++)
 	{
-		combinedNUFFT.x[i] = 0.5 * *(evaluationPoints + previousWindowStart + i) - 0.75;
+		combinedNUFFT.x[i] = 0.5 * *(evaluationPoints + previousWindowStart + i) - 0.5;
         if (combinedNUFFT.x[i] < -0.5)
         {
 			combinedNUFFT.x[i] += 1.;
@@ -386,11 +386,11 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int waveLength, 
 	}
     for (int i = 0; i < windowLength; i++)
     {
-        combinedNUFFT.x[previousWindowLength + i] = 0.5 * *(evaluationPoints + windowStart + i) - 0.25;
+        combinedNUFFT.x[previousWindowLength + i] = 0.5 * *(evaluationPoints + windowStart + i);
     }
 	for (int i = 0; i < nextWindowLength; i++)
 	{
-		combinedNUFFT.x[previousWindowLength + windowLength + i] = 0.5 * *(evaluationPoints + nextWindowStart + i) + 0.25;
+		combinedNUFFT.x[previousWindowLength + windowLength + i] = 0.5 * *(evaluationPoints + nextWindowStart + i) - 0.5;
 		if (combinedNUFFT.x[previousWindowLength + windowLength + i] >= 0.5)
 		{
 			combinedNUFFT.x[previousWindowLength + windowLength + i] -= 1.;
@@ -408,8 +408,8 @@ void separateVoicedUnvoicedSingleWindow(int index, float* wave, int waveLength, 
     nfft_adjoint_1d(&combinedNUFFT);
     for (int i = 0; i < config.nHarmonics + 2; i++)
     {
-        (*(result + index * (config.nHarmonics + 2) + i))[0] = (*(combinedNUFFT.f_hat + i))[0] * 2.;
-        (*(result + index * (config.nHarmonics + 2) + i))[1] = (*(combinedNUFFT.f_hat + i))[1] * 2.;
+        (*(result + index * (config.nHarmonics + 2) + i))[0] = (*(combinedNUFFT.f_hat + i))[0];
+        (*(result + index * (config.nHarmonics + 2) + i))[1] = (*(combinedNUFFT.f_hat + i))[1];
     }
     nfft_finalize(&combinedNUFFT);
 }
@@ -436,7 +436,6 @@ void separateVoicedUnvoicedPostProc(fftw_complex* result, cSample sample, engine
             (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[1] = (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[0];
         }
     }
-    return;
 	for (int i = 0; i < config.halfHarmonics; i++)
 	{
 		(*(result + 2 * i + 1))[1] = ((*(result + 2 * i + 1))[0] + (*(result + config.nHarmonics + 2 * i + 3))[0]) / 2.;
@@ -557,17 +556,15 @@ void constructVoicedSignal(fftw_complex* result, float* wave, cSample sample, en
 			    int coord = *(windowPoints.content + k);
 			    real += (*(result + coord * (config.nHarmonics + 2) + 2 * j))[0];
 			    imag += (*(result + coord * (config.nHarmonics + 2) + 2 * j))[1];
-                abs += cpxAbsd(*(result + coord * (config.nHarmonics + 2) + 2 * j)) - (*(result + coord * (config.nHarmonics + 2) + 2 * j + 1))[1];
+                abs += cpxAbsd(*(result + coord * (config.nHarmonics + 2) + 2 * j)) -(*(result + coord * (config.nHarmonics + 2) + 2 * j + 1))[1];
             }
-		    real /= windowPoints.length;
-		    imag /= windowPoints.length;
 			abs /= windowPoints.length;
 			if (abs < 0.)
 			{
 				abs = 0.;
 			}
 			fftw_complex cpx = { real, imag };
-			*(sample.specharm + i * config.frameSize + config.halfHarmonics - 1 - j) = abs;
+			*(sample.specharm + i * config.frameSize + config.halfHarmonics - 1 - j) = abs * 2.;
             *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 - j) = cpxArgd(cpx);
         }
 		float principalPhase = *(sample.specharm + i * config.frameSize + config.halfHarmonics + 1);
@@ -636,27 +633,31 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * result, flo
         for (int j = 0; j < config.halfHarmonics - 1; j++)
         {
 			float abs = (*(result + i * (config.nHarmonics + 2) + 2 * j + 3))[1];
-            inverseNUFFT.f_hat[config.nHarmonics - j - 1][0] = cos(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j + 2))) * abs;
-            inverseNUFFT.f_hat[config.nHarmonics - j - 1][1] = sin(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j + 2))) * abs * -1.;
+			abs = cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j + 2));
+			float arg = cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j + 2));
+            inverseNUFFT.f_hat[config.nHarmonics - j - 1][0] = cos(arg) * abs;
+            inverseNUFFT.f_hat[config.nHarmonics - j - 1][1] = sin(arg) * abs * -1.;
         }
         for (int j = 0; j < config.halfHarmonics; j++)
         {
 			float abs = (*(result + i * (config.nHarmonics + 2) + 2 * j + 1))[1];
-            inverseNUFFT.f_hat[j][0] = cos(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * abs;
-            inverseNUFFT.f_hat[j][1] = sin(cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j))) * abs;
+			abs = cpxAbsd(*(result + i * (config.nHarmonics + 2) + 2 * j));
+			float arg = cpxArgd(*(result + i * (config.nHarmonics + 2) + 2 * j));
+            inverseNUFFT.f_hat[j][0] = cos(arg) * abs;
+            inverseNUFFT.f_hat[j][1] = sin(arg) * abs;
         }
         nfft_trafo_1d(&inverseNUFFT);
 		for (int j = 0; j < start_inner - start_outer; j++)
 		{
-			*(unvoicedSignal + start_outer + j) += inverseNUFFT.f[j][0] * j / (start_inner - start_outer - 1);
+			*(unvoicedSignal + start_outer + j) += (*(wave + start_outer + j) - inverseNUFFT.f[j][0]) * j / (start_inner - start_outer - 1);
 		}
 		for (int j = 0; j < length_inner; j++)
 		{
-			*(unvoicedSignal + start_inner + j) += inverseNUFFT.f[start_inner - start_outer + j][0];
+			*(unvoicedSignal + start_inner + j) += *(wave + start_inner + j) - inverseNUFFT.f[start_inner - start_outer + j][0];
 		}
 		for (int j = 0; j < end_outer - end_inner; j++)
 		{
-			*(unvoicedSignal + end_inner + j) += inverseNUFFT.f[end_inner - start_outer + j][0] * (end_outer - end_inner - 1 - j) / (end_outer - end_inner - 1);
+			*(unvoicedSignal + end_inner + j) += (*(wave + end_inner + j) - inverseNUFFT.f[end_inner - start_outer + j][0]) * (end_outer - end_inner - 1 - j) / (end_outer - end_inner - 1);
 		}
         nfft_finalize(&inverseNUFFT);
     }
@@ -746,7 +747,7 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     }
     separateVoicedUnvoicedPostProc(combinedCoeffs, sample, config);
 	constructVoicedSignal(combinedCoeffs, wave, sample, config);
-	constructUnvoicedSignal(evaluationPoints, combinedCoeffs, wave, waveLength, unvoicedSignal, sample, config);
+	//constructUnvoicedSignal(evaluationPoints, combinedCoeffs, wave, waveLength, unvoicedSignal, sample, config);
     free(wave);
 	free(evaluationPoints);
     free(combinedCoeffs);
