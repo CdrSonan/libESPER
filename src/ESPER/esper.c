@@ -18,7 +18,7 @@
 //main function for ESPER audio analysis. Accepts a cSample as argument, and writes the results of the analysis back into the appropriate fields of the sample.
 void LIBESPER_CDECL specCalc(cSample sample, engineCfg config)
 {
-    sample.config.batches = (sample.config.length / config.batchSize) + 1;
+    sample.config.batches = sample.config.length / config.batchSize;
     fftwf_complex* buffer = stft(sample.waveform, sample.config.length, config);
     float* signalsAbs = (float*) malloc(sample.config.batches * (config.halfTripleBatchSize + 1) * sizeof(float));
     #pragma omp parallel for

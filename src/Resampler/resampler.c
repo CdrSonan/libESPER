@@ -39,7 +39,7 @@ void LIBESPER_CDECL resampleExcitation(float* excitation, int length, int startC
             *(imgCoeffsSrc + j) = *(excitation + (j + length) * (config.halfTripleBatchSize + 1) + i);
         }
         float* realCoeffsTgt = extrap(idxs, realCoeffsSrc, positions, length, timings.windowEnd);
-        float* imgCoeffsTgt = extrap(idxs, realCoeffsSrc, positions, length, timings.windowEnd);
+        float* imgCoeffsTgt = extrap(idxs, imgCoeffsSrc, positions, length, timings.windowEnd);
         for (int j = 0; j < timings.windowEnd; j++)
         {
             float abs = sqrtf(powf(*(realCoeffsTgt + j), 2) + powf(*(imgCoeffsTgt + j), 2));
