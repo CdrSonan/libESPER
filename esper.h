@@ -132,7 +132,6 @@ specharm: This array combines three sections for each processing window:
 - the phase of the harmonics, relative to the f0 phase
 - the deviation of the overall spectrum of the sample from the average.
 avgSpecharm: the average harmonic amplitudes and spectrum of the sample.
-excitation: the residual/unvoiced portion of the sample. Given as complex fourier coefficients, with ALL imaginary values following ALL real values in the array.
 config: the configuration object for the sample.
 */
 typedef struct
@@ -142,7 +141,6 @@ typedef struct
     int* pitchMarkers;
     float* specharm;
     float* avgSpecharm;
-    float* excitation;
     cSampleCfg config;
 }
 cSample;

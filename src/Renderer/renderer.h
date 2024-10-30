@@ -9,8 +9,8 @@
 
 #include "src/util.h"
 
-LIBESPER_EXPORT void LIBESPER_CDECL renderUnvoiced(float* specharm, float* excitation, int premultiplied, float* target, int length, engineCfg config);
+LIBESPER_EXPORT void LIBESPER_CDECL renderUnvoiced(float* specharm, float* target, int length, engineCfg config);
 
 LIBESPER_EXPORT void LIBESPER_CDECL renderVoiced(float* specharm, float* pitch, float* phase, float* target, int length, engineCfg config);
 
-LIBESPER_EXPORT void LIBESPER_CDECL render(float* specharm, float* excitation, float* pitch, int premultipliedExc, float* phase, float* target, int length, engineCfg config);
+LIBESPER_EXPORT void LIBESPER_CDECL render(float* specharm, float* pitch, float* phase, float* target, int length, engineCfg config);

@@ -94,7 +94,6 @@ typedef struct
 	int* pitchMarkers;
     float* specharm;
     float* avgSpecharm;
-    float* excitation;
     cSampleCfg config;
 }
 cSample;
@@ -148,5 +147,7 @@ float cpxArgf(fftwf_complex input);
 double cpxArgd(fftw_complex input);
 
 float* hannWindow(int length, float multiplier);
+
+float random_normal(float mean, float stddev);
 
 float pi;

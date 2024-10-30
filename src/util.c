@@ -140,5 +140,13 @@ float* hannWindow(int length, float multiplier)
     return hannWindow;
 }
 
+float random_normal(float mean, float stddev)
+{
+	float u1 = (float)rand() / (float)RAND_MAX;
+	float u2 = (float)rand() / (float)RAND_MAX;
+	float z = sqrt(-2. * log(u1)) * cos(2. * pi * u2);
+	return mean + z * stddev;
+}
+
 //the number pi
 float pi = 3.1415926535897932384626433;
