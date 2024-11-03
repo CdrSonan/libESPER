@@ -9,4 +9,4 @@
 
 #include "src/util.h"
 
-LIBESPER_EXPORT void LIBESPER_CDECL pitchCalcFallback(cSample sample, engineCfg config);
+LIBESPER_EXPORT void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config);

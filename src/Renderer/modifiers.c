@@ -16,7 +16,7 @@
 #include "src/interpolation.h"
 #include LIBESPER_FFTW_INCLUDE_PATH
 
-void LIBESPER_CDECL applyBreathiness(float* specharm, float* excitation, float* breathiness, int length, engineCfg config)
+void LIBESPER_CDECL applyBreathiness(float* specharm, float* breathiness, int length, engineCfg config)
 {
 	for (int i = 0; i < length; i++)
 	{
@@ -48,10 +48,9 @@ void LIBESPER_CDECL applyBreathiness(float* specharm, float* excitation, float* 
 		{
 			*(specharm + i * config.frameSize + j) *= breathinessVoiced;
 		}
-		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
+		for (int j = config.nHarmonics + 2; j < config.frameSize; j++)
 		{
-			*(excitation + i * (config.halfTripleBatchSize + 1) + j) *= breathinessUnvoiced;
-			*(excitation + (i + length) * (config.halfTripleBatchSize + 1) + j) *= breathinessUnvoiced;
+			*(specharm + i * config.frameSize + j) *= breathinessUnvoiced;
 		}
 	}
 }
