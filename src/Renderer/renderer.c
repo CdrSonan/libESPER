@@ -44,12 +44,13 @@ void LIBESPER_CDECL renderVoiced(float* specharm, float* pitch, float* phase, fl
 	{
 		*(waveSpace + i) = ((float)i - 0.5) / (float)config.batchSize;
 	}
+	interp_caches harmInterpCaches = interp_setup(frameSpace, waveSpace, length, length * config.batchSize);
 	float* wavePitch = extrap(frameSpace, pitch, waveSpace, length, length * config.batchSize);
 	float* pitchOffsets = (float*)malloc(length * config.batchSize * sizeof(float));
 	*pitchOffsets = 0.;
 	for (int i = 0; i < length * config.batchSize - 1; i++)
 	{
-		*(pitchOffsets + i + 1) = *(pitchOffsets + i) + 1. / *(wavePitch + i);
+		*(pitchOffsets + i + 1) = fmodf(*(pitchOffsets + i) + 1. / *(wavePitch + i), 1.);
 	}
 	free(wavePitch);
 	float* harmAbs = (float*)malloc(length * sizeof(float));
@@ -63,13 +64,14 @@ void LIBESPER_CDECL renderVoiced(float* specharm, float* pitch, float* phase, fl
 			*(harmAbs + j) = *(specharm + j * config.frameSize + i);
 			*(harmArg + j) = *(specharm + j * config.frameSize + config.halfHarmonics + i);
 		}
-		extrap_inpl(frameSpace, harmAbs, waveSpace, length, length * config.batchSize, interpAbs);
+		interp_exec(harmAbs, length, interpAbs, length * config.batchSize, harmInterpCaches);
 		circInterp_inpl(frameSpace, harmArg, waveSpace, length, length * config.batchSize, interpArg);
 		for (int j = 0; j < length * config.batchSize - 1; j++)
 		{
 			*(target + j) += cos(*(interpArg + j) + *(pitchOffsets + j) * 2. * pi * i) * *(interpAbs + j);
 		}
 	}
+	interp_dealloc(harmInterpCaches);
 	free(harmAbs);
 	free(harmArg);
 	free(interpAbs);
@@ -81,6 +83,10 @@ void LIBESPER_CDECL renderVoiced(float* specharm, float* pitch, float* phase, fl
 
 void LIBESPER_CDECL render(float* specharm, float* pitch, float* phase, float* target, int length, engineCfg config)
 {
+	for (int i = 0; i < length * config.batchSize; i++)
+	{
+		*(target + i) = 0;
+	}
 	renderUnvoiced(specharm, target, length, config);
 	renderVoiced(specharm, pitch, phase, target, length, config);
 }

@@ -102,8 +102,8 @@ fftwf_complex* stft(float* input, int length, engineCfg config)
         float* buffer = (float*) malloc((config.tripleBatchSize) * sizeof(float));
         for (int j = 0; j < config.tripleBatchSize; j++)
         {
-            // apply hanning window to data and load the result into buffer
-            *(buffer + j) = *(in + i * config.batchSize + j) * pow(sin(pi * j / config.tripleBatchSize), 2);
+            // apply hanning window and normalization to data and load the result into buffer
+            *(buffer + j) = *(in + i * config.batchSize + j) * pow(sin(pi * j / config.tripleBatchSize), 2) * 4. / config.tripleBatchSize;
         }
         fftwf_plan plan = fftwf_plan_dft_r2c_1d(config.tripleBatchSize, buffer, out + i * (config.halfTripleBatchSize + 1), FFTW_ESTIMATE);
         fftwf_execute(plan);

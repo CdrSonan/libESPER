@@ -10,6 +10,7 @@
 #include <malloc.h>
 #include <math.h>
 #include <stdlib.h>
+#include <float.h>
 #include LIBESPER_FFTW_INCLUDE_PATH
 
 //initializes a dynamic integer array, and allocates memory for it
@@ -142,8 +143,12 @@ float* hannWindow(int length, float multiplier)
 
 float random_normal(float mean, float stddev)
 {
-	float u1 = (float)rand() / (float)RAND_MAX;
-	float u2 = (float)rand() / (float)RAND_MAX;
+    double u1 = (double)rand() / (double)RAND_MAX;
+    double u2 = (double)rand() / (double)RAND_MAX;
+	if (u1 <= DBL_MIN)
+	{
+		u1 = 0.5;
+	}
 	float z = sqrt(-2. * log(u1)) * cos(2. * pi * u2);
 	return mean + z * stddev;
 }

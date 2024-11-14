@@ -34,7 +34,7 @@ void loopSamplerVoiced(float* input, int length, float* output, int targetLength
         {
 			for (int j = 0; j < config.nHarmonics + 2; j++)
 			{
-				*(output + i * (config.nHarmonics + 2) + j) = *(input + i * config.frameSize + j);
+				*(output + i * config.frameSize + j) = *(input + i * config.frameSize + j);
 				*(buffer + i * (config.nHarmonics + 2) + j) = *(input + i * config.frameSize + j);
 			}
         }
@@ -117,6 +117,10 @@ void stretchSamplerUnvoiced(float* input, int length, float* output, int targetL
 
 void loopSamplerSpecharm(float* input, int length, float* output, int targetLength, float spacing, engineCfg config)
 {
+	for (int i = 0; i < targetLength * config.frameSize; i++)
+	{
+		*(output + i) = 0.;
+	}
 	loopSamplerVoiced(input, length, output, targetLength, spacing, config);
 	stretchSamplerUnvoiced(input, length, output, targetLength, config);
 }

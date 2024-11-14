@@ -488,13 +488,9 @@ void applyUnvoicedSignal(float* unvoicedSignal, cSample sample, engineCfg config
     fftwf_complex* buffer = stft(unvoicedSignal, sample.config.length, config);
     for (int i = 0; i < sample.config.batches; i++)
     {
-        for (int j = 0; j < config.halfHarmonics; j++)
-        {
-            *(sample.specharm + i * config.frameSize + j) = 0;
-        }
         for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
         {
-            *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) = cpxAbsf(*(buffer + i * config.halfTripleBatchSize + j));
+            *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) = cpxAbsf(*(buffer + i * (config.halfTripleBatchSize + 1) + j));
         }
     }
     free(buffer);
@@ -507,6 +503,13 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     //separation calculations are only necessary if the sample is voiced
     if (sample.config.isVoiced == 0)
     {
+        for (int i = 0; i < sample.config.batches; i++)
+        {
+            for (int j = 0; j < config.halfHarmonics; j++)
+            {
+                *(sample.specharm + i * config.frameSize + j) = 0;
+            }
+        }
 		applyUnvoicedSignal(sample.waveform, sample, config);
 		return;
     }
