@@ -64,7 +64,7 @@ void LIBESPER_CDECL renderVoiced(float* specharm, float* pitch, float* phase, fl
 			*(harmAbs + j) = *(specharm + j * config.frameSize + i);
 			*(harmArg + j) = *(specharm + j * config.frameSize + config.halfHarmonics + i);
 		}
-		interp_exec(harmAbs, length, interpAbs, length * config.batchSize, harmInterpCaches);
+		interp_exec(frameSpace, harmAbs, length, interpAbs, length * config.batchSize, harmInterpCaches);
 		circInterp_inpl(frameSpace, harmArg, waveSpace, length, length * config.batchSize, interpArg);
 		for (int j = 0; j < length * config.batchSize - 1; j++)
 		{

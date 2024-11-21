@@ -94,8 +94,17 @@ interp_caches interp_setup(float* x, float* xs, int len, int lenxs)
 	return caches;
 }
 
-void interp_exec(float* y, int len, float* ys, int lenxs, interp_caches caches)
+void interp_exec(float* x, float* y, int len, float* ys, int lenxs, interp_caches caches)
 {
+    for (int i = 0; i < (len - 1); i++)
+    {
+        *(caches.m + i + 1) = (*(y + i + 1) - *(y + i)) / (*(x + i + 1) - *(x + i));
+    }
+    *caches.m = *(caches.m + 1);
+    for (int i = 1; i < (len - 1); i++)
+    {
+        *(caches.m + i) = (*(caches.m + i) + *(caches.m + i + 1)) / 2.;
+    }
 	int offset;
 	for (int i = 0; i < lenxs; i++)
 	{
@@ -117,7 +126,7 @@ void interp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
     if (*xs < *x) printf("interpolation input too low! %f %f\n", *xs, *x);
     if (*(xs + lenxs - 1) > *(x + len - 1)) printf("interpolation input too high! %f %f\n", *(xs + lenxs - 1), *(x + len - 1));
 	interp_caches caches = interp_setup(x, xs, len, lenxs);
-	interp_exec(y, len, ys, lenxs, caches);
+	interp_exec(x, y, len, ys, lenxs, caches);
 	interp_dealloc(caches);
 }
 

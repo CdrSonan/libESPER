@@ -109,6 +109,34 @@ unsigned int median(unsigned int* array, unsigned int length)
 	return median;
 }
 
+int compare_float(const void* a, const void* b)
+{
+    if (*(float*)a < *(float*)b)
+    {
+        return -1;
+    }
+    if (*(float*)a > *(float*)b)
+    {
+        return 1;
+    }
+    return 0;
+}
+
+float medianf(float* array, unsigned int length)
+{
+	qsort(array, length, sizeof(float), compare_float);
+	float median;
+	if (length % 2 == 0)
+	{
+		median = (*(array + length / 2) + *(array + length / 2 - 1)) / 2;
+	}
+	else
+	{
+		median = *(array + length / 2);
+	}
+	return median;
+}
+
 
 //calculates the absolute value of a complex number.
 float cpxAbsf(fftwf_complex input)

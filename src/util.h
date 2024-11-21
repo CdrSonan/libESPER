@@ -138,6 +138,10 @@ int compare_uint(const void* a, const void* b);
 
 unsigned int median(unsigned int* array, unsigned int length);
 
+int compare_float(const void* a, const void* b);
+
+float medianf(float* array, unsigned int length);
+
 float cpxAbsf(fftwf_complex input);
 
 double cpxAbsd(fftw_complex input);

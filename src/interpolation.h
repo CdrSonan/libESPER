@@ -19,7 +19,7 @@ typedef struct
 
 interp_caches interp_setup(float* x, float* xs, int len, int lenxs);
 
-void interp_exec(float* y, int len, float* ys, int lenxs, interp_caches caches);
+void interp_exec(float* x, float* y, int len, float* ys, int lenxs, interp_caches caches);
 
 void interp_dealloc(interp_caches caches);
 

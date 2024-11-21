@@ -20,147 +20,65 @@
 //uses running means instead of a lowpass filter.
 //less accurate than the lowRangeSmooth, but remains stable at high frequencies.
 void smoothFourierSpace(cSample sample, engineCfg config) {
-    //variable for size of a spectrum with right-side padding
-    unsigned int specSize = config.halfTripleBatchSize + sample.config.specDepth + 1;
-    float* workingSpectra = (float*) malloc(sample.config.batches * specSize * sizeof(float));
-    float* spectra = (float*) malloc(sample.config.batches * specSize * sizeof(float));
-    #pragma omp parallel for
+	float* workingSpectrum = (float*)malloc((config.halfTripleBatchSize + 1) * sizeof(float));
     for (int i = 0; i < sample.config.batches; i++)
     {
-        //copy data into buffers
-        for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
+		*workingSpectrum =
+            *(sample.specharm + i * config.frameSize + config.nHarmonics + 2) * 0.75 +
+            *(sample.specharm + i * config.frameSize + config.nHarmonics + 3) * 0.25;
+        for (int j = 1; j < config.halfTripleBatchSize; j++)
         {
-            *(workingSpectra + i * specSize + j) = *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j);
-            *(spectra + i * specSize + j) = *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j);
+            *(workingSpectrum + j) =
+                *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) * 0.5 +
+                *(sample.specharm + i * config.frameSize + config.nHarmonics + 1 + j) * 0.25 +
+                *(sample.specharm + i * config.frameSize + config.nHarmonics + 3 + j) * 0.25;
         }
-        //add padding on right side
-        for (int j = config.halfTripleBatchSize + 1; j < specSize; j++)
-        {
-            *(workingSpectra + i * specSize + j) = *(sample.specharm + (i + 1) * config.frameSize - 1);
-            *(spectra + i * specSize + j) = *(sample.specharm + (i + 1) * config.frameSize - 1);
-        }
+		*(workingSpectrum + config.halfTripleBatchSize) =
+			*(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + config.halfTripleBatchSize) * 0.75 +
+			*(sample.specharm + i * config.frameSize + config.nHarmonics + 1 + config.halfTripleBatchSize) * 0.25;
+		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
+		{
+			*(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) = *(workingSpectrum + j);
+		}
     }
-    //When a running mean window contains the edge of the padded spectrum, it loops around to the other edge of the spectrum.
-    //This contraption handles the required logic.
-    int lowK;
-    int highK;
-    for (int i = 0; i < sample.config.specDepth; i++)
-    {
-        #pragma omp parallel for
-        for (int j = 0; j < sample.config.batches; j++)
-        {
-            for (int k = 0; k < specSize; k++)
-            {
-                for (int l = 1; l < sample.config.specWidth + 1; l++)
-                {
-                    lowK = k;
-                    highK = k;
-                    if (k + l >= specSize)
-                    {
-                        highK -= specSize;
-                    } else if (k - l < 0)
-                    {
-                        lowK += specSize;
-                    }
-                    //perform running mean on workingSpectra, load result into spectra
-                    *(spectra + j * specSize + k) += *(workingSpectra + j * specSize + highK + l) + *(workingSpectra + j * specSize + lowK - l);
-                }
-                //normalize result
-                *(spectra + j * specSize + k) /= 2 * sample.config.specWidth + 1;
-            }
-        }
-        for (int j = 0; j < sample.config.batches * specSize; j++)
-        {
-            *(workingSpectra + j) = *(spectra + j);
-        }
-    }
-    free(workingSpectra);
-    #pragma omp parallel for
-    for (int i = 0; i < sample.config.batches; i++)
-    {
-        for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
-        {
-            *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) = *(spectra + i * specSize + j);
-        }
-    }
-    free(spectra);
+	free(workingSpectrum);
 }
 
 void smoothTempSpace(cSample sample, engineCfg config)
 {
-    //variable for the length of the data in the time dimension, with padding on both sides
-    unsigned int timeSize = sample.config.batches + 2 * sample.config.tempDepth;
-    //allocate buffers
-    float* workingSpectra = (float*)malloc(timeSize * (config.halfTripleBatchSize + 1) * sizeof(float));
-	float* targetSpectra = (float*)malloc(timeSize * (config.halfTripleBatchSize + 1) * sizeof(float));
-    //copy data to buffers and add padding
-    for (int i = 0; i < sample.config.tempDepth; i++)
+    sample.config.tempWidth = 15;
+	float* medianBuffer = (float*)malloc(sample.config.tempWidth * sizeof(float));
+	float* resultBuffer = (float*)malloc(sample.config.batches * sizeof(float));
+    for (int i = 0; i < config.halfTripleBatchSize + 1; i++)
     {
-        for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
+		for (int j = 0; j < sample.config.batches; j++)
+		{
+			for (int k = 0; k < sample.config.tempWidth; k++)
+			{
+				int index = j + k - sample.config.tempWidth / 2;
+				if (index < 0 || index >= sample.config.batches)
+				{
+                    *(medianBuffer + k) = 0.;
+				}
+				else
+				{
+                    *(medianBuffer + k) = *(sample.specharm + index * config.frameSize + config.nHarmonics + 2 + i);
+				}
+			}
+			*(resultBuffer + j) = medianf(medianBuffer, sample.config.tempWidth);
+		}
+        for (int j = 0; j < sample.config.batches; j++)
         {
-            *(workingSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sample.specharm + config.nHarmonics + 2 + j);
-            *(targetSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sample.specharm + config.nHarmonics + 2 + j);
-        }
-    }
-    for (int i = sample.config.tempDepth; i < sample.config.tempDepth + sample.config.batches; i++)
-    {
-        for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
-        {
-            *(workingSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sample.specharm + (i - sample.config.tempDepth) * config.frameSize + config.nHarmonics + 2 + j);
-            *(targetSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sample.specharm + (i - sample.config.tempDepth) * config.frameSize + config.nHarmonics + 2 + j);
-        }
-    }
-    for (int i = sample.config.tempDepth + sample.config.batches; i < timeSize; i++)
-    {
-        for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
-        {
-            *(workingSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sample.specharm + (sample.config.batches - 1) * config.frameSize + config.nHarmonics + 2 + j);
-            *(targetSpectra + i * (config.halfTripleBatchSize + 1) + j) = *(sample.specharm + (sample.config.batches - 1) * config.frameSize + config.nHarmonics + 2 + j);
-        }
-    }
-    //same contraption for handling running mean windows crossing the edge of the buffers as in highRangeSmooth()
-    int lowJ;
-    int highJ;
-    for (int i = 0; i < sample.config.tempDepth; i++)
-    {
-        for (int j = 0; j < timeSize; j++)
-        {
-            for (int k = 0; k < config.halfTripleBatchSize + 1; k++)
+            if (i < 3)
             {
-                for (int l = 1; l < sample.config.tempWidth + 1; l++)
-                {
-                    lowJ = j;
-                    highJ = j;
-                    if (j + l >= timeSize)
-                    {
-                        highJ -= timeSize;
-                    }
-                    else if (j - l < 0)
-                    {
-                        lowJ += timeSize;
-                    }
-                    //perform running-mean smoothing
-                    *(targetSpectra + j * (config.halfTripleBatchSize + 1) + k) += *(workingSpectra + (highJ + l) * (config.halfTripleBatchSize + 1) + k) + *(workingSpectra + (lowJ - l) * (config.halfTripleBatchSize + 1) + k);
-                }
-                //normalize result
-                *(targetSpectra + j * (config.halfTripleBatchSize + 1) + k) /= 2 * sample.config.tempWidth + 1;
+				*(sample.specharm + j * config.frameSize + config.nHarmonics + 2 + i) = 0.;
+				continue;
             }
-        }
-        //take maximum of both buffers
-        for (int j = 0; j < timeSize * (config.halfTripleBatchSize + 1); j++)
-        {
-            *(workingSpectra + j) = *(targetSpectra + j);
+            *(sample.specharm + j * config.frameSize + config.nHarmonics + 2 + i) = *(resultBuffer + j);
         }
     }
-    free(workingSpectra);
-    for (int i = 0; i < sample.config.batches; i++)
-    {
-        for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
-        {
-            *(sample.specharm + i * config.frameSize + config.nHarmonics + 2 + j) = *(targetSpectra + i * (config.halfTripleBatchSize + 1) + j);
-        }
-    }
-	free(targetSpectra);
+	free(medianBuffer);
+	free(resultBuffer);
 }
 
 //utility function for fetching the approximate pitch of a sample at a location given in data points from the start of the sample.
@@ -664,6 +582,6 @@ void finalizeSample(cSample sample, engineCfg config)
     averageSpectra(sample, config);
     if (sample.config.useVariance > 0)
     {
-        dampenOutliers(sample, config);
+        //dampenOutliers(sample, config);
     }
 }
