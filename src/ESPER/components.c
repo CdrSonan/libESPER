@@ -69,11 +69,6 @@ void smoothTempSpace(cSample sample, engineCfg config)
 		}
         for (int j = 0; j < sample.config.batches; j++)
         {
-            if (i < 3)
-            {
-				*(sample.specharm + j * config.frameSize + config.nHarmonics + 2 + i) = 0.;
-				continue;
-            }
             *(sample.specharm + j * config.frameSize + config.nHarmonics + 2 + i) = *(resultBuffer + j);
         }
     }
@@ -319,7 +314,7 @@ void constructVoicedSignal(fftw_complex* dftCoeffs, cSample sample, engineCfg co
 }
 void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, float* unvoicedSignal, cSample sample, engineCfg config)
 {
-    //TODO: add first and last window edge cases
+	FILE* file2 = fopen("markers.csv", "w");
 	for (int i = 0; i < sample.config.markerLength - 1; i++)
     {
         nfft_plan inverseNUFFT;
@@ -332,8 +327,8 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, 
 		}
         else
         {
-			start_inner = 0.75 * *(sample.pitchMarkers + i) + 0.25 * *(sample.pitchMarkers + i + 1);
-            start_outer = 0.75 * *(sample.pitchMarkers + i) + 0.25 * *(sample.pitchMarkers + i - 1);
+            start_inner =  0.75 * *(sample.pitchMarkers + i) + 0.25 * *(sample.pitchMarkers + i + 1);
+            start_outer =  0.75 * *(sample.pitchMarkers + i) + 0.25 * *(sample.pitchMarkers + i - 1);
         }
         int end_inner;
 		int end_outer;
@@ -344,8 +339,8 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, 
 		}
         else
 		{
-			end_inner = 0.75 * *(sample.pitchMarkers + i + 1) + 0.25 * *(sample.pitchMarkers + i);
-			end_outer = 0.75 * *(sample.pitchMarkers + i + 1) + 0.25 * *(sample.pitchMarkers + i + 2);
+            end_inner =  0.75 * *(sample.pitchMarkers + i + 1) + 0.25 * *(sample.pitchMarkers + i);
+            end_outer =  0.75 * *(sample.pitchMarkers + i + 1) + 0.25 * *(sample.pitchMarkers + i + 2);
 		}
 		int length_inner = end_inner - start_inner;
 		int length_outer = end_outer - start_outer;
@@ -378,27 +373,66 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, 
             inverseNUFFT.f_hat[j][1] = sin(arg) * abs;
         }
         nfft_trafo_1d(&inverseNUFFT);
+
+		float localPitch = *(sample.pitchMarkers + i + 1) - *(sample.pitchMarkers + i);
+        float referencePitch;
+		if (i == 0)
+		{
+			referencePitch = *(sample.pitchMarkers + i + 1) - *(sample.pitchMarkers + i);
+		}
+		else
+		{
+			referencePitch = *(sample.pitchMarkers + i) - *(sample.pitchMarkers + i - 1);
+		}
+        if (i == sample.config.markerLength - 2)
+        {
+            referencePitch += *(sample.pitchMarkers + i + 1) - *(sample.pitchMarkers + i);
+        }
+        else
+		{
+			referencePitch += *(sample.pitchMarkers + i + 2) - *(sample.pitchMarkers + i + 1);
+		}
+		referencePitch /= 2;
+        float pitchDivergence;
+		if (localPitch + referencePitch == 0)
+		{
+			pitchDivergence = 0;
+		}
+		else if (localPitch > referencePitch)
+		{
+			pitchDivergence = (localPitch - referencePitch) / (localPitch + referencePitch);
+		}
+		else
+		{
+			pitchDivergence = (referencePitch - localPitch) / (localPitch + referencePitch);
+		}
+		fprintf(file2, "%i\n", *(sample.pitchMarkers + i));
+        float multiplier = 1. - pitchDivergence;
 		for (int j = 0; j < start_inner - start_outer; j++)
 		{
-			*(unvoicedSignal + start_outer + j) += (*(sample.waveform + start_outer + j) - inverseNUFFT.f[j][0]) * j / (start_inner - start_outer - 1);
+			//*(unvoicedSignal + start_outer + j) += (*(sample.waveform + start_outer + j) - inverseNUFFT.f[j][0]) * j / (start_inner - start_outer - 1) * multiplier;
+            *(unvoicedSignal + start_outer + j) += (*(sample.waveform + start_outer + j) - inverseNUFFT.f[j][0]) * j / (start_inner - start_outer - 1) * multiplier;
 		}
 		for (int j = 0; j < length_inner; j++)
 		{
-			*(unvoicedSignal + start_inner + j) += *(sample.waveform + start_inner + j) - inverseNUFFT.f[start_inner - start_outer + j][0];
+			//*(unvoicedSignal + start_inner + j) += *(sample.waveform + start_inner + j) - inverseNUFFT.f[start_inner - start_outer + j][0] * multiplier;
+            *(unvoicedSignal + start_inner + j) += (*(sample.waveform + start_inner + j) - inverseNUFFT.f[start_inner - start_outer + j][0]) * multiplier;
 		}
 		for (int j = 0; j < end_outer - end_inner; j++)
 		{
-			*(unvoicedSignal + end_inner + j) += (*(sample.waveform + end_inner + j) - inverseNUFFT.f[end_inner - start_outer + j][0]) * (end_outer - end_inner - 1 - j) / (end_outer - end_inner - 1);
+			//*(unvoicedSignal + end_inner + j) += (*(sample.waveform + end_inner + j) - inverseNUFFT.f[end_inner - start_outer + j][0]) * (end_outer - end_inner - 1 - j) / (end_outer - end_inner - 1) * multiplier;
+            *(unvoicedSignal + end_inner + j) += (*(sample.waveform + end_inner + j) - inverseNUFFT.f[end_inner - start_outer + j][0]) * (end_outer - end_inner - 1 - j) / (end_outer - end_inner - 1) * multiplier;
 		}
         nfft_finalize(&inverseNUFFT);
     }
+	fclose(file2);
     //debug csv output
-    /*FILE* file = fopen("unvoiced.csv", "w");
+    FILE* file = fopen("unvoiced.csv", "w");
     for (int i = 0; i < sample.config.length; i++)
     {
         fprintf(file, "%f, %f\n", *(sample.waveform + i), *(unvoicedSignal + i));
     }
-	fclose(file);*/
+	fclose(file);
 }
 
 void applyUnvoicedSignal(float* unvoicedSignal, cSample sample, engineCfg config)
@@ -471,14 +505,14 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
             evalPart = getEvaluationPoints(i, i + 8, sample.waveform, sample, config);
             for (int j = *(sample.pitchMarkers + i + 1); j < *(sample.pitchMarkers + i + 7); j++)
             {
-                *(evaluationPoints + j) = fmodf(*(evalPart + j - *(sample.pitchMarkers + i + 1)), 1.);
+                *(evaluationPoints + j) = fmodf(*(evalPart + j - *(sample.pitchMarkers + i)), 1.);
             }
             free(evalPart);
         }
         evalPart = getEvaluationPoints(sample.config.markerLength - 9, sample.config.markerLength - 1, sample.waveform, sample, config);
         for (int i = *(sample.pitchMarkers + sample.config.markerLength - 8); i < *(sample.pitchMarkers + sample.config.markerLength - 1); i++)
         {
-            *(evaluationPoints + i) = fmodf(*(evalPart + i - *(sample.pitchMarkers + sample.config.markerLength - 8)), 1.);
+            *(evaluationPoints + i) = fmodf(*(evalPart + i - *(sample.pitchMarkers + sample.config.markerLength - 9)), 1.);
         }
         free(evalPart);
     }

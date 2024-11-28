@@ -75,7 +75,7 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 		float tgtAmplitude = 0.;
 		int reprSwitch = config.halfHarmonics * effSrcPitch;
 		int srcSize = config.halfHarmonics + config.halfTripleBatchSize + 1 - reprSwitch;
-		if (srcSize < config.halfHarmonics)
+		if (srcSize < (int)config.halfHarmonics)
 		{
 			srcSize = config.halfHarmonics;
 		}

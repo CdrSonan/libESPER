@@ -23,7 +23,11 @@ void LIBESPER_CDECL renderUnvoiced(float* specharm, float* target, int length, e
 	{
 		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
 		{
-			float multiplier = *(specharm + i * config.frameSize + config.nHarmonics + 2 + j);
+			//The absolute values of the excitation follow Rayleigh distributions.
+			//The values saved in the specharm array are the mean values of these distributions.
+			//To correctly generate random complex vectors of magnitudes following this distribution, we need to convert from the mean of the Rayleigh distribution to its scale parameter.
+			//This results in a division by sqrt(pi/2).
+			float multiplier = *(specharm + i * config.frameSize + config.nHarmonics + 2 + j) / sqrt(pi/2.);
 			(*(cpxExcitation + i * (config.halfTripleBatchSize + 1) + j))[0] = random_normal(0, multiplier);
 			(*(cpxExcitation + i * (config.halfTripleBatchSize + 1) + j))[1] = random_normal(0, multiplier);
 		}
