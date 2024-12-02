@@ -49,6 +49,29 @@ void smoothTempSpace(cSample sample, engineCfg config)
     sample.config.tempWidth = 15;
 	float* medianBuffer = (float*)malloc(sample.config.tempWidth * sizeof(float));
 	float* resultBuffer = (float*)malloc(sample.config.batches * sizeof(float));
+    for (int i = 0; i < config.halfHarmonics; i++)
+    {
+        for (int j = 0; j < sample.config.batches; j++)
+        {
+            for (int k = 0; k < sample.config.tempWidth; k++)
+            {
+                int index = j + k - sample.config.tempWidth / 2;
+                if (index < 0 || index >= sample.config.batches)
+                {
+                    *(medianBuffer + k) = 0.;
+                }
+                else
+                {
+                    *(medianBuffer + k) = *(sample.specharm + index * config.frameSize + i);
+                }
+            }
+            *(resultBuffer + j) = medianf(medianBuffer, sample.config.tempWidth);
+        }
+        for (int j = 0; j < sample.config.batches; j++)
+        {
+            *(sample.specharm + j * config.frameSize + i) = *(resultBuffer + j);
+        }
+    }
     for (int i = 0; i < config.halfTripleBatchSize + 1; i++)
     {
 		for (int j = 0; j < sample.config.batches; j++)
@@ -196,10 +219,48 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
 	int effectiveLength = sample.config.markerLength - 1;
 	int kernelSize = 10;
 	float sigmaBase = 5;
+    fftw_complex* medianDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
 	fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
+    float* medianBuffer = (float*)malloc(5 * sizeof(float));
     //temporal smoothing
     for (int i = 0; i < config.halfHarmonics; i++)
     {
+        for (int j = 0; j < effectiveLength; j++)
+        {
+            for (int k = 0; k < 5; k++)
+            {
+                int index = j + k - 2;
+                if (index < 0)
+                {
+                    index = 0;
+                }
+                if (index >= effectiveLength)
+                {
+                    index = effectiveLength - 1;
+                }
+                medianBuffer[k] = (*(dftCoeffs + index * config.halfHarmonics + i))[0];
+            }
+            qsort(medianBuffer, 5, sizeof(float), compareFloats);
+            (*(medianDftCoeffs + j * config.halfHarmonics + i))[0] = medianBuffer[2];
+        }
+        for (int j = 0; j < effectiveLength; j++)
+        {
+            for (int k = 0; k < 5; k++)
+            {
+                int index = j + k - 2;
+                if (index < 0)
+                {
+                    index = 0;
+                }
+                if (index >= effectiveLength)
+                {
+                    index = effectiveLength - 1;
+                }
+                medianBuffer[k] = (*(dftCoeffs + index * config.halfHarmonics + i))[1];
+            }
+            qsort(medianBuffer, 5, sizeof(float), compareFloats);
+            (*(medianDftCoeffs + j * config.halfHarmonics + i))[1] = medianBuffer[2];
+        }
 		float sigma = sigmaBase * powf(1. - (float)(i) / (float)config.halfHarmonics, 2.);
         float* kernel = gaussWindow(kernelSize, sigma);
 	    for (int j = 0; j < effectiveLength; j++)
@@ -229,6 +290,8 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
         (*(dftCoeffs + i))[1] = (*(smoothedDftCoeffs + i))[1];
 	}
 	free(smoothedDftCoeffs);
+    free(medianDftCoeffs);
+    free(medianBuffer);
 }
 
 void constructVoicedSignal(fftw_complex* dftCoeffs, cSample sample, engineCfg config)
