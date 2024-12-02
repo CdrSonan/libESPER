@@ -56,23 +56,11 @@ float* interp(float* x, float* y, float* xs, int len, int lenxs)
     return ys;
 }
 
-void interp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
+interp_caches interp_setup(float* x, float* xs, int len, int lenxs)
 {
-    if (*xs < *x) printf("interpolation input too low! %f %f\n", *xs, *x);
-    if (*(xs + lenxs - 1) > *(x + len - 1)) printf("interpolation input too high! %f %f\n", *(xs + lenxs - 1), *(x + len - 1));
-    //fill old space derivative array
-    float* m = (float*)malloc(len * sizeof(float));
-    for (int i = 0; i < (len - 1); i++)
-    {
-        *(m + i + 1) = (*(y + i + 1) - *(y + i)) / (*(x + i + 1) - *(x + i));
-    }
-    *m = *(m + 1);
-    for (int i = 1; i < (len - 1); i++)
-    {
-        *(m + i) = (*(m + i) + *(m + i + 1)) / 2.;
-    }
-    //get correct indices for xs
-    float* idxs = (float*)malloc(lenxs * sizeof(float));
+	interp_caches caches;
+    caches.m = (float*)malloc(len * sizeof(float));
+    caches.idxs = (float*)malloc(lenxs * sizeof(float));
     int i = 0; //iterator for xs
     int j = 0; //iterator for x
     while ((j < len - 1) && (i < lenxs)) //since both x and xs are sorted, iterating linearly is O(n), compared to O(n log n) for repeated binary search
@@ -83,37 +71,63 @@ void interp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
         }
         else
         {
-            *(idxs + i) = j;
+            *(caches.idxs + i) = j;
             i++;
         }
     }
     while (i < lenxs) //all remaining points are behind the last element of x
     {
-        *(idxs + i) = j;
+        *(caches.idxs + i) = j;
         i++;
     }
-    //compute new space derivatives and hermite polynomial base
-    float* dx = (float*)malloc(lenxs * sizeof(float));
+	caches.dx = (float*)malloc(lenxs * sizeof(float));
     float* hh = (float*)malloc(lenxs * sizeof(float));
     int offset;
     for (int i = 0; i < lenxs; i++)
     {
-        offset = *(idxs + i);
-        *(dx + i) = *(x + 1 + offset) - *(x + offset);
-        *(hh + i) = (*(xs + i) - *(x + offset)) / *(dx + i);
+        offset = *(caches.idxs + i);
+        *(caches.dx + i) = *(x + 1 + offset) - *(x + offset);
+        *(hh + i) = (*(xs + i) - *(x + offset)) / *(caches.dx + i);
     }
-    float* h = hPoly(hh, lenxs);
+    caches.h = hPoly(hh, lenxs);
     free(hh);
-    //compute final data
-    for (int i = 0; i < lenxs; i++)
+	return caches;
+}
+
+void interp_exec(float* x, float* y, int len, float* ys, int lenxs, interp_caches caches)
+{
+    for (int i = 0; i < (len - 1); i++)
     {
-        offset = *(idxs + i);
-        *(ys + i) = (*(h + i) * *(y + offset)) + (*(h + i + lenxs) * *(m + offset) * *(dx + i)) + (*(h + i + 2 * lenxs) * *(y + offset + 1)) + (*(h + i + 3 * lenxs) * *(m + offset + 1) * *(dx + i));
+        *(caches.m + i + 1) = (*(y + i + 1) - *(y + i)) / (*(x + i + 1) - *(x + i));
     }
-    free(m);
-    free(idxs);
-    free(dx);
-    free(h);
+    *caches.m = *(caches.m + 1);
+    for (int i = 1; i < (len - 1); i++)
+    {
+        *(caches.m + i) = (*(caches.m + i) + *(caches.m + i + 1)) / 2.;
+    }
+	int offset;
+	for (int i = 0; i < lenxs; i++)
+	{
+		offset = *(caches.idxs + i);
+		*(ys + i) = (*(caches.h + i) * *(y + offset)) + (*(caches.h + i + lenxs) * *(caches.m + offset) * *(caches.dx + i)) + (*(caches.h + i + 2 * lenxs) * *(y + offset + 1)) + (*(caches.h + i + 3 * lenxs) * *(caches.m + offset + 1) * *(caches.dx + i));
+	}
+}
+
+void interp_dealloc(interp_caches caches)
+{
+	free(caches.m);
+	free(caches.idxs);
+	free(caches.dx);
+	free(caches.h);
+}
+
+void interp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
+{
+    if (*xs < *x) printf("interpolation input too low! %f %f\n", *xs, *x);
+    if (*(xs + lenxs - 1) > *(x + len - 1)) printf("interpolation input too high! %f %f\n", *(xs + lenxs - 1), *(x + len - 1));
+	interp_caches caches = interp_setup(x, xs, len, lenxs);
+	interp_exec(x, y, len, ys, lenxs, caches);
+	interp_dealloc(caches);
 }
 
 //wrapper around interp() that supports basic extrapolation, instead of having undefined behavior for xs values outside the range of x

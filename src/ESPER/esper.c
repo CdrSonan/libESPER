@@ -8,28 +8,16 @@
 #include "src/ESPER/esper.h"
 
 #include <malloc.h>
-#include <stdio.h>
-#include <math.h>
 #include "src/util.h"
-#include "src/fft.h"
 #include "src/ESPER/components.h"
 #include LIBESPER_FFTW_INCLUDE_PATH
 
 //main function for ESPER audio analysis. Accepts a cSample as argument, and writes the results of the analysis back into the appropriate fields of the sample.
 void LIBESPER_CDECL specCalc(cSample sample, engineCfg config)
 {
-    sample.config.batches = (sample.config.length / config.batchSize) + 1;
-    fftwf_complex* buffer = stft(sample.waveform, sample.config.length, config);
-    float* signalsAbs = (float*) malloc(sample.config.batches * (config.halfTripleBatchSize + 1) * sizeof(float));
-    #pragma omp parallel for
-    for (int i = 0; i < sample.config.batches * (config.halfTripleBatchSize + 1); i++) {
-        *(signalsAbs + i) = sqrtf(cpxAbsf(*(buffer + i)) / config.tripleBatchSize * 4.);
-    }
-    free(buffer);
-    float* lowSpectra = lowRangeSmooth(sample, signalsAbs, config);
-    float* highSpectra = highRangeSmooth(sample, signalsAbs, config);
-    free(signalsAbs);
-    finalizeSpectra(sample, lowSpectra, highSpectra, config);
+    sample.config.batches = sample.config.length / config.batchSize;
     separateVoicedUnvoiced(sample, config);
+    smoothFourierSpace(sample, config);
+	smoothTempSpace(sample, config);
     finalizeSample(sample, config);
 }

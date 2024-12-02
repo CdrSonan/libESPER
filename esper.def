@@ -2,7 +2,6 @@ LIBRARY "esper"
 EXPORTS
     pitchCalcFallback
     specCalc
-    resampleExcitation
     resampleSpecharm
     resamplePitch
     applyBreathiness

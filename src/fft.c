@@ -74,7 +74,7 @@ void irfft_inpl(fftwf_complex* input, int length, float* output)
 //The i-th window of the transform is centered at (i + 1/2) * config.batchSize, and reflection padding is applied to the signal as needed to accomplish this.
 fftwf_complex* stft(float* input, int length, engineCfg config)
 {
-    int batches = (length / config.batchSize) + 1;
+    int batches = length / config.batchSize;
     int rightpad = batches * config.batchSize - length + config.halfTripleBatchSize;
     // extended input buffer aligned with batch size
     float* in = (float*) malloc((config.halfTripleBatchSize + length + rightpad) * sizeof(float));
@@ -102,8 +102,8 @@ fftwf_complex* stft(float* input, int length, engineCfg config)
         float* buffer = (float*) malloc((config.tripleBatchSize) * sizeof(float));
         for (int j = 0; j < config.tripleBatchSize; j++)
         {
-            // apply hanning window to data and load the result into buffer
-            *(buffer + j) = *(in + i * config.batchSize + j) * pow(sin(pi * j / config.tripleBatchSize), 2);
+            // apply hanning window and normalization to data and load the result into buffer
+            *(buffer + j) = *(in + i * config.batchSize + j) * pow(sin(pi * j / config.tripleBatchSize), 2) * 4. / config.tripleBatchSize;
         }
         fftwf_plan plan = fftwf_plan_dft_r2c_1d(config.tripleBatchSize, buffer, out + i * (config.halfTripleBatchSize + 1), FFTW_ESTIMATE);
         fftwf_execute(plan);
@@ -119,7 +119,7 @@ fftwf_complex* stft(float* input, int length, engineCfg config)
 //The i-th window of the transform is centered at i * config.batchSize, and reflection padding is applied to the signal as needed to accomplish this.
 void stft_inpl(float* input, int length, engineCfg config, float* output)
 {
-    int batches = (length / config.batchSize) + 1;
+    int batches = length / config.batchSize;
     fftwf_complex* buffer = stft(input, length, config);
     #pragma omp parallel for
     for (int i = 0; i < batches * (config.halfTripleBatchSize + 1); i++)

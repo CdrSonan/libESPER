@@ -9,6 +9,20 @@
 
 float* interp(float* x, float* y, float* xs, int len, int lenxs);
 
+typedef struct
+{
+    float* m;
+    float* idxs;
+    float* dx;
+    float* h;
+} interp_caches;
+
+interp_caches interp_setup(float* x, float* xs, int len, int lenxs);
+
+void interp_exec(float* x, float* y, int len, float* ys, int lenxs, interp_caches caches);
+
+void interp_dealloc(interp_caches caches);
+
 void interp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys);
 
 float* extrap(float* x, float* y, float* xs, int len, int lenxs);

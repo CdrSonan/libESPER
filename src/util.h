@@ -94,7 +94,6 @@ typedef struct
 	int* pitchMarkers;
     float* specharm;
     float* avgSpecharm;
-    float* excitation;
     cSampleCfg config;
 }
 cSample;
@@ -139,6 +138,10 @@ int compare_uint(const void* a, const void* b);
 
 unsigned int median(unsigned int* array, unsigned int length);
 
+int compare_float(const void* a, const void* b);
+
+float medianf(float* array, unsigned int length);
+
 float cpxAbsf(fftwf_complex input);
 
 double cpxAbsd(fftw_complex input);
@@ -148,5 +151,7 @@ float cpxArgf(fftwf_complex input);
 double cpxArgd(fftw_complex input);
 
 float* hannWindow(int length, float multiplier);
+
+float random_normal(float mean, float stddev);
 
 float pi;

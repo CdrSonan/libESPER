@@ -204,9 +204,6 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 		}
 	}
 	sample->config.pitch = median(sample->pitchDeltas, sample->config.pitchLength);
-	for (int i = 0; i < sample->config.markerLength; i++) {
-		*(sample->pitchMarkers + i) += config.halfTripleBatchSize * config.filterBSMult;
-	}
 }
 
 
