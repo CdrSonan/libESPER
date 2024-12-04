@@ -11,7 +11,7 @@
 #include <math.h>
 #include "src/util.h"
 
-//Utility function for batched calculation of Hermite polynomials. Used by interp().
+//Utility function for batched calculation of Hermite polynomials. Used by interp_inpl() and functions derived from it.
 float* hPoly(float* input, int length)
 {
     //tile input 4 times and apply a different exponential to each version
@@ -56,6 +56,7 @@ float* interp(float* x, float* y, float* xs, int len, int lenxs)
     return ys;
 }
 
+//setup function for interpolation. Calculates the Hermite polynomials and the indices of the x values closest to the xs values.
 interp_caches interp_setup(float* x, float* xs, int len, int lenxs)
 {
 	interp_caches caches;
@@ -94,6 +95,8 @@ interp_caches interp_setup(float* x, float* xs, int len, int lenxs)
 	return caches;
 }
 
+//main function for interpolation. Writes the result into the ys buffer. The caches argument is expected to be filled by interp_setup().
+//The caches remain valid after the function returns, and can be used for multiple calls to interp_exec().
 void interp_exec(float* x, float* y, int len, float* ys, int lenxs, interp_caches caches)
 {
     for (int i = 0; i < (len - 1); i++)
@@ -113,6 +116,7 @@ void interp_exec(float* x, float* y, int len, float* ys, int lenxs, interp_cache
 	}
 }
 
+//deallocates the caches created by interp_setup()
 void interp_dealloc(interp_caches caches)
 {
 	free(caches.m);
@@ -121,6 +125,7 @@ void interp_dealloc(interp_caches caches)
 	free(caches.h);
 }
 
+//in-place version of interp() that writes the result back into the ys buffer
 void interp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
 {
     if (*xs < *x) printf("interpolation input too low! %f %f\n", *xs, *x);
@@ -130,7 +135,7 @@ void interp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
 	interp_dealloc(caches);
 }
 
-//wrapper around interp() that supports basic extrapolation, instead of having undefined behavior for xs values outside the range of x
+//wrapper around interp() that supports basic extrapolation, instead of having undefined behavior for xs values outside the range of x.
 float* extrap(float* x, float* y, float* xs, int len, int lenxs)
 {
     //perform extrapolation
@@ -202,6 +207,7 @@ float* extrap(float* x, float* y, float* xs, int len, int lenxs)
     return ys;
 }
 
+//in-place version of extrap() that writes the result back into the ys buffer
 void extrap_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
 {
     //perform extrapolation
@@ -272,6 +278,8 @@ void extrap_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
     }
 }
 
+//batched circular interpolation of y coordinates belonging to points with x coordinates given by xs, using the points (x, y) as guides
+//x and xs coordinates are expected to be normalized to the range [-pi, pi]
 float* circInterp(float* x, float* y, float* xs, int len, int lenxs)
 {
     float* ys = (float*)malloc(lenxs * sizeof(float));
@@ -282,6 +290,8 @@ float* circInterp(float* x, float* y, float* xs, int len, int lenxs)
     return ys;
 }
 
+//in-place version of circInterp() that writes the result back into the ys buffer
+//x and xs coordinates are expected to be normalized to the range [-pi, pi]
 void circInterp_inpl(float* x, float* y, float* xs, int len, int lenxs, float* ys)
 {
     int idx = 0;

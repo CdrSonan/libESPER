@@ -16,6 +16,7 @@
 #include "src/interpolation.h"
 #include LIBESPER_FFTW_INCLUDE_PATH
 
+//applies a breathiness effect to a specharm signal. This is done by altering the balance between the voiced and unvoiced parts.
 void LIBESPER_CDECL applyBreathiness(float* specharm, float* breathiness, int length, engineCfg config)
 {
 	for (int i = 0; i < length; i++)
@@ -55,6 +56,8 @@ void LIBESPER_CDECL applyBreathiness(float* specharm, float* breathiness, int le
 	}
 }
 
+//performs a pitch shifting operation on a specharm signal.
+//The voiced part is always adjusted to sound correct at the target pitch, while the amount of adjustment the unvoiced part receives is controlled by a combination of the formant shift and breathiness parameters.
 void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch, float* formantShift, float* breathiness, int length, engineCfg config)
 {
 	float* tgtSpace = (float*)malloc(config.halfHarmonics * sizeof(float));
@@ -169,6 +172,7 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 }
 
 
+//applies a dynamics effect to a specharm signal. This effect amplifies or reduces the audio volume in selected, empirically chosen frequency ranges.
 /*
 harmonic to freq bin: bin = harmonic * pitch / TBS
 freq bin to harmonic: harmonic = bin * TBS / pitch
@@ -217,6 +221,7 @@ void LIBESPER_CDECL applyDynamics(float* specharm, float* dynamics, float* pitch
 	}
 }
 
+//applies a brightness effect to a specharm signal. This effect increases or decreases the amplitude differences between loud and quiet frequencies.
 void LIBESPER_CDECL applyBrightness(float* specharm, float* brightness, int length, engineCfg config)
 {
 	for (int i = 0; i < length; i++)
@@ -259,6 +264,7 @@ void LIBESPER_CDECL applyBrightness(float* specharm, float* brightness, int leng
 	
 }
 
+//applies a growl effect to a specharm signal. This effect modulates the amplitude of the entire audio with a low-frequency oscillator with partially random phase advances.
 void LIBESPER_CDECL applyGrowl(float* specharm, float* growl, float* lfoPhase, int length, engineCfg config)
 {
 	for (int i = 0; i < length; i++)
@@ -282,6 +288,7 @@ void LIBESPER_CDECL applyGrowl(float* specharm, float* growl, float* lfoPhase, i
 	}
 }
 
+//applies a roughness effect to a specharm signal. This effect adds random phase shifts to the voiced part of the audio.
 void LIBESPER_CDECL applyRoughness(float* specharm, float* roughness, int length, engineCfg config)
 {
 	for (int i = 0; i < length; i++)

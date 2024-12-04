@@ -89,11 +89,14 @@ unsigned int findIndex_double(double* markers, unsigned int markerLength, int po
     return (unsigned int)high;
 }
 
+//compares two unsigned integers for qsort
 int compare_uint(const void* a, const void* b)
 {
 	return (*(unsigned int*)a - *(unsigned int*)b);
 }
 
+//calculates the median of an array of unsigned integers
+//Does NOT preserve the order of the array.
 unsigned int median(unsigned int* array, unsigned int length)
 {
 	qsort(array, length, sizeof(unsigned int), compare_uint);
@@ -109,6 +112,7 @@ unsigned int median(unsigned int* array, unsigned int length)
 	return median;
 }
 
+//compares two floats for qsort
 int compare_float(const void* a, const void* b)
 {
     if (*(float*)a < *(float*)b)
@@ -122,6 +126,8 @@ int compare_float(const void* a, const void* b)
     return 0;
 }
 
+//calculates the median of an array of floats
+//Does NOT preserve the order of the array.
 float medianf(float* array, unsigned int length)
 {
 	qsort(array, length, sizeof(float), compare_float);
@@ -144,6 +150,7 @@ float cpxAbsf(fftwf_complex input)
     return sqrtf(powf(input[0], 2) + powf(input[1], 2));
 }
 
+//calculates the absolute value of a double precision complex number.
 double cpxAbsd(fftw_complex input)
 {
     return sqrtf(pow(input[0], 2) + pow(input[1], 2));
@@ -155,11 +162,14 @@ float cpxArgf(fftwf_complex input)
     return atan2f(input[1], input[0]);
 }
 
+//calculates the phase angle of a double precision complex number
 double cpxArgd(fftw_complex input)
 {
     return atan2(input[1], input[0]);
 }
 
+//returns an array of floats representing a hanning window of a given length, multiplied by a given factor and an additional factor of 2/3,
+// to account for the energy loss of the window and the 3 window overlap used in STFT operations.
 float* hannWindow(int length, float multiplier)
 {
     float* hannWindow = (float*)malloc(length * sizeof(float));
@@ -169,6 +179,7 @@ float* hannWindow(int length, float multiplier)
     return hannWindow;
 }
 
+//returns a pseudorandom float value sampled from a normal distribution with a given mean and standard deviation.
 float random_normal(float mean, float stddev)
 {
     double u1 = (double)rand() / (double)RAND_MAX;

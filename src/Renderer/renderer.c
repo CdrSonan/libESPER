@@ -16,6 +16,7 @@
 #include LIBESPER_FFTW_INCLUDE_PATH
 #include LIBESPER_NFFT_INCLUDE_PATH
 
+//renders the unvoiced part of a specharm signal.
 void LIBESPER_CDECL renderUnvoiced(float* specharm, float* target, int length, engineCfg config)
 {
 	fftwf_complex* cpxExcitation = (fftwf_complex*)malloc(length * (config.halfTripleBatchSize + 1) * sizeof(fftwf_complex));
@@ -36,6 +37,7 @@ void LIBESPER_CDECL renderUnvoiced(float* specharm, float* target, int length, e
 	free(cpxExcitation);
 }
 
+//renders the voiced part of a specharm signal. The result is added to the existing content of the target array, rather than overwriting it.
 void LIBESPER_CDECL renderVoiced(float* specharm, float* pitch, float* phase, float* target, int length, engineCfg config)
 {
 	float* frameSpace = (float*)malloc(length * sizeof(float));
@@ -85,6 +87,7 @@ void LIBESPER_CDECL renderVoiced(float* specharm, float* pitch, float* phase, fl
 	free(waveSpace);
 }
 
+//renders a specharm signal. The result is written into the target array.
 void LIBESPER_CDECL render(float* specharm, float* pitch, float* phase, float* target, int length, engineCfg config)
 {
 	for (int i = 0; i < length * config.batchSize; i++)

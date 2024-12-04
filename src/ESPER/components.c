@@ -16,9 +16,7 @@
 #include LIBESPER_FFTW_INCLUDE_PATH
 #include LIBESPER_NFFT_INCLUDE_PATH
 
-//spectral smoothing/envelope calculation function very loosely based on the True Envelope Estimator algorithm.
-//uses running means instead of a lowpass filter.
-//less accurate than the lowRangeSmooth, but remains stable at high frequencies.
+//smoothes the unvoiced part of a specharm signal in fourier space, i.e. makes each fourier coefficient influence its neighbors.
 void smoothFourierSpace(cSample sample, engineCfg config) {
 	float* workingSpectrum = (float*)malloc((config.halfTripleBatchSize + 1) * sizeof(float));
     for (int i = 0; i < sample.config.batches; i++)
@@ -44,9 +42,9 @@ void smoothFourierSpace(cSample sample, engineCfg config) {
 	free(workingSpectrum);
 }
 
+//smoothes the unvoiced part of a specharm signal in temporal space, i.e. makes each time point influence its neighbors.
 void smoothTempSpace(cSample sample, engineCfg config)
 {
-    sample.config.tempWidth = 15;
 	float* medianBuffer = (float*)malloc(sample.config.tempWidth * sizeof(float));
 	float* resultBuffer = (float*)malloc(sample.config.batches * sizeof(float));
     for (int i = 0; i < config.halfHarmonics; i++)
@@ -99,29 +97,7 @@ void smoothTempSpace(cSample sample, engineCfg config)
 	free(resultBuffer);
 }
 
-//utility function for fetching the approximate pitch of a sample at a location given in data points from the start of the sample.
-//requires the sample to have existing pitch data.
-int getLocalPitch(int position, cSample sample, engineCfg config)
-{
-    //remove implicit padding
-    int effectivePos = position - config.halfTripleBatchSize * (int)config.filterBSMult;
-    //limit result to sample bounds and divide by batchSize to get the correct batch index.
-    //this is done in this somewhat awkward order to prevent issues with unsigned integer division.
-    if (effectivePos <= 0)
-    {
-        effectivePos = 0;
-    }
-    else
-    {
-        effectivePos /= config.batchSize;
-    }
-    if (effectivePos >= sample.config.pitchLength )
-    {
-        effectivePos = sample.config.pitchLength - 1;
-    }
-    return *(sample.pitchDeltas + effectivePos);
-}
-
+//constructs a set of evaluation points, i.e. per-sample pitch-synchronous coordinates, for a sample object with existing pitch data.
 float* getEvaluationPoints(int start, int end, float* wave, cSample sample, engineCfg config)
 {
     float* localMarkers = (float*)malloc((end - start) * sizeof(float));
@@ -145,6 +121,8 @@ float* getEvaluationPoints(int start, int end, float* wave, cSample sample, engi
 	return evaluationPoints;
 }
 
+//performs voiced-unvoiced separation for a single time window within a sample object.
+//the result is a set of fourier coefficients for the voiced part of the window, which are written to the appropriate location in the result array.
 void separateVoicedUnvoicedSingleWindow(int index, float* evaluationPoints, fftw_complex* result, cSample sample, engineCfg config)
 {
 	int windowStart = *(sample.pitchMarkers + index);
@@ -179,13 +157,7 @@ void separateVoicedUnvoicedSingleWindow(int index, float* evaluationPoints, fftw
     nfft_finalize(&combinedNUFFT);
 }
 
-float calculatePhaseContinuity(float phaseA, float phaseB)
-{
-    float phaseDiff = fmin(phaseB - phaseA, phaseA - phaseB);
-    return cos(phaseDiff / 2.);
-}
-
-
+//compares two float values for sorting purposes.
 int compareFloats(const void* a, const void* b)
 {
     float diff = (*(const float*)a - *(const float*)b);
@@ -194,6 +166,8 @@ int compareFloats(const void* a, const void* b)
     return 0;
 }
 
+//constructs a symmetric gaussian window of a given length and standard deviation.
+//the window is normalized to sum to 1.
 float* gaussWindow(int length, float sigma)
 {
 	float* window = (float*)malloc(length * sizeof(float));
@@ -214,6 +188,8 @@ float* gaussWindow(int length, float sigma)
 	return window;
 }
 
+//post-processing for voiced-unvoiced separation after all windows have been processed.
+//applies adaptive smoothing to the assumed voiced part of the signal.
 void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, engineCfg config)
 {
 	int effectiveLength = sample.config.markerLength - 1;
@@ -294,6 +270,7 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
     free(medianBuffer);
 }
 
+//constructs a voiced signal from a set of fourier coefficients, and saves it in the sample object.
 void constructVoicedSignal(fftw_complex* dftCoeffs, cSample sample, engineCfg config)
 {
 	int windowStart = 0;
@@ -375,9 +352,10 @@ void constructVoicedSignal(fftw_complex* dftCoeffs, cSample sample, engineCfg co
     }
     dynIntArray_dealloc(&windowPoints);
 }
+
+//constructs an unvoiced signal from the difference between a set of voiced fourier coefficients and the waveform of a sample object.
 void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, float* unvoicedSignal, cSample sample, engineCfg config)
 {
-	FILE* file2 = fopen("markers.csv", "w");
 	for (int i = 0; i < sample.config.markerLength - 1; i++)
     {
         nfft_plan inverseNUFFT;
@@ -469,35 +447,24 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, 
 		{
 			pitchDivergence = (referencePitch - localPitch) / (localPitch + referencePitch);
 		}
-		fprintf(file2, "%i\n", *(sample.pitchMarkers + i));
         float multiplier = 1. - pitchDivergence;
 		for (int j = 0; j < start_inner - start_outer; j++)
 		{
-			//*(unvoicedSignal + start_outer + j) += (*(sample.waveform + start_outer + j) - inverseNUFFT.f[j][0]) * j / (start_inner - start_outer - 1) * multiplier;
             *(unvoicedSignal + start_outer + j) += (*(sample.waveform + start_outer + j) - inverseNUFFT.f[j][0]) * j / (start_inner - start_outer - 1) * multiplier;
 		}
 		for (int j = 0; j < length_inner; j++)
 		{
-			//*(unvoicedSignal + start_inner + j) += *(sample.waveform + start_inner + j) - inverseNUFFT.f[start_inner - start_outer + j][0] * multiplier;
             *(unvoicedSignal + start_inner + j) += (*(sample.waveform + start_inner + j) - inverseNUFFT.f[start_inner - start_outer + j][0]) * multiplier;
 		}
 		for (int j = 0; j < end_outer - end_inner; j++)
 		{
-			//*(unvoicedSignal + end_inner + j) += (*(sample.waveform + end_inner + j) - inverseNUFFT.f[end_inner - start_outer + j][0]) * (end_outer - end_inner - 1 - j) / (end_outer - end_inner - 1) * multiplier;
             *(unvoicedSignal + end_inner + j) += (*(sample.waveform + end_inner + j) - inverseNUFFT.f[end_inner - start_outer + j][0]) * (end_outer - end_inner - 1 - j) / (end_outer - end_inner - 1) * multiplier;
 		}
         nfft_finalize(&inverseNUFFT);
     }
-	fclose(file2);
-    //debug csv output
-    FILE* file = fopen("unvoiced.csv", "w");
-    for (int i = 0; i < sample.config.length; i++)
-    {
-        fprintf(file, "%f, %f\n", *(sample.waveform + i), *(unvoicedSignal + i));
-    }
-	fclose(file);
 }
 
+//takes the waveform of an unvoiced signal and saves the corresponding fourier coefficients in the sample object.
 void applyUnvoicedSignal(float* unvoicedSignal, cSample sample, engineCfg config)
 {
     fftwf_complex* buffer = stft(unvoicedSignal, sample.config.length, config);
@@ -512,7 +479,7 @@ void applyUnvoicedSignal(float* unvoicedSignal, cSample sample, engineCfg config
 }
 
 //separates voiced and unvoiced excitation of a sample through pitch-synchronous analysis.
-//requires pitch data to be included in the sample struct to work correctly.
+//requires pitch data to be included in the sample struct.
 void separateVoicedUnvoiced(cSample sample, engineCfg config)
 {
     //separation calculations are only necessary if the sample is voiced
@@ -598,10 +565,8 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     free(unvoicedSignal);
 }
 
-//averages all harmonic amplitudes and spectra, stores the result in the avgSpecharm field of the sample, and overwrites the specharms with their difference from the average.
+//averages all harmonic and unvoiced amplitudes, stores the result in the avgSpecharm field of the sample, and overwrites the specharms with their difference from the average.
 //avgSpecharm is shorter than a specharm, since the harmonics phases are not stored in it.
-//Also dampens outlier points if the config of the sample calls for it.
-//final step of the ESPER audio analysis pipeline.
 void averageSpectra(cSample sample, engineCfg config)
 {
     //average spectra
@@ -636,6 +601,7 @@ void averageSpectra(cSample sample, engineCfg config)
     }
 }
 
+//dampens the influence of outliers in the specharm signal of a sample.
 void dampenOutliers(cSample sample, engineCfg config)
 {
     return;
@@ -674,11 +640,12 @@ void dampenOutliers(cSample sample, engineCfg config)
     free(variances);
 }
 
+//finalizes an analysed sample object by performing all necessary post-processing steps.
 void finalizeSample(cSample sample, engineCfg config)
 {
     averageSpectra(sample, config);
     if (sample.config.useVariance > 0)
     {
-        //dampenOutliers(sample, config);
+        dampenOutliers(sample, config);
     }
 }

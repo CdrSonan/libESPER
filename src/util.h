@@ -48,19 +48,9 @@ typedef struct
     unsigned int batchSize;
     unsigned int tripleBatchSize;
     unsigned int halfTripleBatchSize; //expected to be exactly tripleBatchSize/2 without additional space for DC offset, since this is also used outside of rfft
-    unsigned short filterBSMult;
-    float DIOBias;
-    float DIOBias2;
-    float DIOTolerance;
-    float DIOLastWinTolerance;
-    unsigned short filterTEEMult;
-    unsigned short filterHRSSMult;
     unsigned int nHarmonics;
     unsigned int halfHarmonics; //expected to be nHarmonics/2 + 1 (to account for DC offset after rfft)
     unsigned int frameSize; //expected to be nHarmonics + halfTripleBatchSize + 3 for joint harmonics + spectrum representation
-    unsigned int ampContThreshold;
-    unsigned int spectralRolloff1;
-    unsigned int spectralRolloff2;
     float breCompPremul;
 }
 engineCfg;
@@ -78,11 +68,7 @@ typedef struct
     int useVariance;
     float expectedPitch;
     float searchRange;
-    float voicedThrh;
-    unsigned short specWidth;
-    unsigned short specDepth;
-    unsigned short tempWidth;
-    unsigned short tempDepth;
+    unsigned short tempWidth;//15
 }
 cSampleCfg;
 

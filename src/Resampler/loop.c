@@ -11,6 +11,7 @@
 #include "src/util.h"
 #include "src/interpolation.h"
 
+//loops the voiced part of an input signal to match a target length. The spacing parameter determines the overlap between the windows.
 void loopSamplerVoiced(float* input, int length, float* output, int targetLength, float spacing, engineCfg config)
 {
     int effSpacing = ceildiv(spacing * length,  2);
@@ -83,6 +84,9 @@ void loopSamplerVoiced(float* input, int length, float* output, int targetLength
     }
 }
 
+//stretches the unvoiced part of an input signal to match a target length.
+//Since the unvoiced part is assumed to be spectral noise, a random phase is assigned to each fourier component in each frame.
+//For spectral noise, this results in no audible changes, but other types of audio are NOT preserved.
 void stretchSamplerUnvoiced(float* input, int length, float* output, int targetLength, engineCfg config)
 {
     float* idxs = (float*)malloc(length * sizeof(float));
@@ -115,6 +119,7 @@ void stretchSamplerUnvoiced(float* input, int length, float* output, int targetL
     free(source);
 }
 
+//adjusts the length of an input signal to match a target length by looping the voiced part and stretching the unvoiced part.
 void loopSamplerSpecharm(float* input, int length, float* output, int targetLength, float spacing, engineCfg config)
 {
 	for (int i = 0; i < targetLength * config.frameSize; i++)
