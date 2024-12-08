@@ -58,6 +58,7 @@ dkms.conf
 # output directory
 out/
 build/
+build-linux/
 
 # CMake
 CMakeSettings.json

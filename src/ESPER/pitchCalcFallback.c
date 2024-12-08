@@ -11,8 +11,6 @@
 #include <math.h>
 #include "src/util.h"
 
-#include <Windows.h>
-
 //defines a struct for a marker candidate in the pitch calculation process.
 //attributes:
 // - position: the position of the zero crossing in the signal.

@@ -1,0 +1,155 @@
+/*
+ * Copyright (c) 2002, 2017 Jens Keiner, Stefan Kunis, Daniel Potts
+ *
+ * This program is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation; either version 2 of the License, or (at your option) any later
+ * version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+ * details.
+ *
+ * You should have received a copy of the GNU General Public License along with
+ * this program; if not, write to the Free Software Foundation, Inc., 51
+ * Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+ */
+
+/**
+ * @defgroup fpt FPT - Fast polynomial transform
+ * @{
+ *
+ * This module implements fast polynomial transforms. In the following, we
+ * abbreviate the term "fast polynomial transforms" by FPT.
+ 
+ Let \f$\alpha_n,\;\beta_n,\;\gamma_n,\;n=0,\dots,N\f$ be given recursion coefficients
+ of the polynomials \f$P_n\f$ defined by \f$P_{-1}(x) = 0\f$, \f$P_{0}(x) = 1\f$ and
+ \f[
+  P_n(x) = (\alpha_nx+\beta_n) P_{n-1}(x) + \gamma_n P_{n-2}(x)
+  ,\qquad n=1,2,\dots
+ \f]
+ for \f$x\in[-1,1]\f$.
+ The Chebyshev polnyomials of the first kind are defined by
+ \f[
+  T_n(x) = \cos(n\, \arccos x).
+ \f]
+ 
+ 
+ Let \f$f\colon [-1,1]\to\mathbb R\f$ be a polynomial of degree \f$N\in\mathbb N\f$.
+ The FPT transforms the polynomial coefficients \f$[x_n]_{n=0..N}\f$ from
+ \f[
+  f = \sum_{n=0}^N x_n P_n
+ \f]
+ into Chebyshev coefficients \f$[y_n]_{n=0..N}\f$ from
+ \f[
+  f = \sum_{n=0}^N y_n T_n.
+ \f]
+ */
+
+/*! \fn fpt_set fpt_init(const int M, const int t, const unsigned int flags)
+ * Initializes a set of precomputed data for DPT transforms of equal length.
+ *
+ * \arg M The maximum DPT transform index \f$M \in \mathbb{N}_0\f$. The
+ *        individual transforms are addressed by and index number \f$m \in
+ *        \mathbb{N}_0\f$ with range \f$m = 0,\ldots,M\f$. The total number
+ *        of transforms is therefore \f$M+1\f$.
+ * \arg t The exponent \f$t \in \mathbb{N}, t \ge 2\f$ of the transform length
+ *        \f$N = 2^t \in \mathbb{N}, N \ge 4\f$
+ * \arg flags A bitwise combination of the flags FPT_NO_STABILIZATION,
+ *
+ * \author Jens Keiner
+ */
+
+/*! \fn void fpt_precompute(fpt_set set, const int m, R *alpha, R *beta, R *gam, int k_start, const R threshold)
+ * Computes the data required for a single DPT transform.
+ *
+ * \arg set The set of DPT transform data where the computed data will be stored.
+ * \arg m The transform index \f$m \in \mathbb{N}, 0 \le m \le M\f$.
+ * \arg alpha The three-term recurrence coefficients \f$\alpha_k \in
+ *      \mathbb{R}\f$ for \f$k=0,\ldots,N\f$ such that <tt> alpha[k]</tt>
+ *      \f$=\alpha_k\f$.
+ * \arg beta The three-term recurrence coefficients \f$\beta_k \in \mathbb{R}\f$
+ *            for \f$k=0,\ldots,N\f$ such that <tt> beta[k] </tt>
+ *            \f$=\beta_k\f$.
+ * \arg gamma The three-term recurrence coefficients \f$\gamma_k \in
+ *            \mathbb{R}\f$ for \f$k=0,\ldots,N\f$ such that <tt> gamma[k]  </tt>
+ *            \f$=\gamma_k\f$.
+ * \arg k_start The index \f$k_{\text{start}} \in \mathbb{N}_0,
+ *              0 \le k_{\text{start}} \le N\f$
+ * \arg threshold The threshold \f$\kappa \in \mathbb{R}, \kappa > 0\f$.
+ *
+ * \author Jens Keiner
+ */
+
+/*! \fn void fpt_direct_trafo(fpt_set set, const int m, const C *x, C *y, const int k_end, const unsigned int flags)
+ * Computes a single DPT transform.
+ *
+ * \arg set
+ * \arg m
+ * \arg x
+ * \arg y
+ * \arg k_end
+ * \arg flags
+ */
+
+/*! \fn void X(trafo)(X(set) set, const int m, const C *x, C *y, const int k_end, const unsigned int flags)
+ * Computes a single DPT transform.
+ *
+ * \arg set
+ * \arg m
+ * \arg x
+ * \arg y
+ * \arg k_end
+ * \arg flags
+ */
+
+/*! \fn void fpt_direct_transposed(fpt_set set, const int m, C *x, C *y, const int k_end, const unsigned int flags)
+ * Computes a single DPT transform.
+ *
+ * \arg set
+ * \arg m
+ * \arg x
+ * \arg y
+ * \arg k_end
+ * \arg flags
+ */
+
+/*! \fn void fpt_transposed(fpt_set set, const int m, C *x, C *y, const int k_end, const unsigned int flags)
+ * Computes a single DPT transform.
+ *
+ * \arg set
+ * \arg m
+ * \arg x
+ * \arg y
+ * \arg k_end
+ * \arg flags
+ */
+
+/** \def FPT_NO_FAST_ALGORITHM
+ *  If set, TODO complete comment.
+ */
+
+/** \def FPT_NO_DIRECT_ALGORITHM
+ *  If set, TODO complete comment.
+ */
+
+/** \def FPT_NO_STABILIZATION
+ *  If set, no stabilization will be used.
+ */
+
+/** \def FPT_PERSISTENT_DATA
+ *  If set, TODO complete comment.
+ */
+
+/** \def FPT_FUNCTION_VALUES
+ *  If set, the output are function values at Chebyshev nodes rather than 
+ *  Chebyshev coefficients.
+ */
+
+/** \def FPT_AL_SYMMETRY
+ *  If set, TODO complete comment.
+ */
+
+/** @}
+ */

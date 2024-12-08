@@ -193,4 +193,4 @@ float random_normal(float mean, float stddev)
 }
 
 //the number pi
-float pi = 3.1415926535897932384626433;
+extern float pi = 3.1415926535897932384626433;

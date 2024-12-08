@@ -15,14 +15,14 @@
         #define LIBESPER_NFFT_INCLUDE_PATH "nfft_win/nfft3.h"
     #elif __GNUC__ >= 4
         #define LIBESPER_EXPORT __attribute__((visibility("default")))
-        #define LIBESPER_CDECL __attribute__((__cdecl__))
+        #define LIBESPER_CDECL
         #define LIBESPER_FFTW_INCLUDE_PATH "fftw/api/fftw3.h"
-        #define LIBESPER_NFFT_INCLUDE_PATH "nfft_win/api/nfft3.h"
+        #define LIBESPER_NFFT_INCLUDE_PATH "nfft/include/nfft3.h"
     #else
         #define LIBESPER_EXPORT
         #define LIBESPER_CDECL
         #define LIBESPER_FFTW_INCLUDE_PATH "fftw/api/fftw3.h"
-        #define LIBESPER_NFFT_INCLUDE_PATH "nfft_win/api/nfft3.h"
+        #define LIBESPER_NFFT_INCLUDE_PATH "nfft/include/nfft3.h"
     #endif
 #else
     #ifdef _WIN32
@@ -34,7 +34,7 @@
         #define LIBESPER_EXPORT
         #define LIBESPER_CDECL
         #define LIBESPER_FFTW_INCLUDE_PATH "fftw/api/fftw3.h"
-        #define LIBESPER_NFFT_INCLUDE_PATH "nfft_win/api/nfft3.h"
+        #define LIBESPER_NFFT_INCLUDE_PATH "nfft/include/nfft3.h"
     #endif
 #endif
 
@@ -140,4 +140,4 @@ float* hannWindow(int length, float multiplier);
 
 float random_normal(float mean, float stddev);
 
-float pi;
+extern float pi;
