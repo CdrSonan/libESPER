@@ -121,6 +121,33 @@ float* getEvaluationPoints(int start, int end, float* wave, cSample sample, engi
 	return evaluationPoints;
 }
 
+void checkMarkerValidity(cSample* sample, engineCfg config)
+{
+    //first and last marker are always valid
+    *(sample->pitchMarkerValidity) = 1;
+    *(sample->pitchMarkerValidity + sample->config.markerLength - 2) = 1;
+    for (int i = 1; i < sample->config.markerLength - 2; i++)
+    {
+        int sectionSize = *(sample->pitchMarkers + i + 1) - *(sample->pitchMarkers + i);
+        float validError = 0;
+        //TODO: calculate validError via interpolation of adjacent windows
+		float invalidError = 0.;
+		for (int j = 0; j < sectionSize; j++)
+		{
+            float alternative = *(sample->waveform + *(sample->pitchMarkers + i - 1) + j) + (*(sample->waveform + *(sample->pitchMarkers + i + 2) - sectionSize + j));
+			invalidError += powf(alternative / 2., 2.);
+		}
+        if (invalidError < validError)
+        {
+            *(sample->pitchMarkerValidity + i) = 0;
+		}
+        else
+        {
+            *(sample->pitchMarkerValidity + i) = 1;
+        }
+    }
+}
+
 //performs voiced-unvoiced separation for a single time window within a sample object.
 //the result is a set of fourier coefficients for the voiced part of the window, which are written to the appropriate location in the result array.
 void separateVoicedUnvoicedSingleWindow(int index, float* evaluationPoints, fftw_complex* result, cSample sample, engineCfg config)

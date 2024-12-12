@@ -68,7 +68,7 @@ typedef struct
     int useVariance;
     float expectedPitch;
     float searchRange;
-    unsigned short tempWidth;//15
+    unsigned short tempWidth;
 }
 cSampleCfg;
 
@@ -78,6 +78,7 @@ typedef struct
     float* waveform;
     int* pitchDeltas;
 	int* pitchMarkers;
+	char* pitchMarkerValidity;
     float* specharm;
     float* avgSpecharm;
     cSampleCfg config;
