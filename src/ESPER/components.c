@@ -121,33 +121,6 @@ float* getEvaluationPoints(int start, int end, float* wave, cSample sample, engi
 	return evaluationPoints;
 }
 
-void checkMarkerValidity(cSample* sample, engineCfg config)
-{
-    //first and last marker are always valid
-    *(sample->pitchMarkerValidity) = 1;
-    *(sample->pitchMarkerValidity + sample->config.markerLength - 2) = 1;
-    for (int i = 1; i < sample->config.markerLength - 2; i++)
-    {
-        int sectionSize = *(sample->pitchMarkers + i + 1) - *(sample->pitchMarkers + i);
-        float validError = 0;
-        //TODO: calculate validError via interpolation of adjacent windows
-		float invalidError = 0.;
-		for (int j = 0; j < sectionSize; j++)
-		{
-            float alternative = *(sample->waveform + *(sample->pitchMarkers + i - 1) + j) + (*(sample->waveform + *(sample->pitchMarkers + i + 2) - sectionSize + j));
-			invalidError += powf(alternative / 2., 2.);
-		}
-        if (invalidError < validError)
-        {
-            *(sample->pitchMarkerValidity + i) = 0;
-		}
-        else
-        {
-            *(sample->pitchMarkerValidity + i) = 1;
-        }
-    }
-}
-
 //performs voiced-unvoiced separation for a single time window within a sample object.
 //the result is a set of fourier coefficients for the voiced part of the window, which are written to the appropriate location in the result array.
 void separateVoicedUnvoicedSingleWindow(int index, float* evaluationPoints, fftw_complex* result, cSample sample, engineCfg config)
@@ -474,7 +447,7 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, 
 		{
 			pitchDivergence = (referencePitch - localPitch) / (localPitch + referencePitch);
 		}
-        float multiplier = 1. - pitchDivergence;
+        float multiplier = 1.;// - pitchDivergence;
 		for (int j = 0; j < start_inner - start_outer; j++)
 		{
             *(unvoicedSignal + start_outer + j) += (*(sample.waveform + start_outer + j) - inverseNUFFT.f[j][0]) * j / (start_inner - start_outer - 1) * multiplier;
@@ -488,6 +461,17 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, 
             *(unvoicedSignal + end_inner + j) += (*(sample.waveform + end_inner + j) - inverseNUFFT.f[end_inner - start_outer + j][0]) * (end_outer - end_inner - 1 - j) / (end_outer - end_inner - 1) * multiplier;
 		}
         nfft_finalize(&inverseNUFFT);
+    }
+    for (int i = 0; i < sample.config.markerLength - 1; i++)
+    {
+		if (*(sample.pitchMarkerValidity + i) == 0)
+		{
+			int sectionSize = *(sample.pitchMarkers + i + 1) - *(sample.pitchMarkers + i);
+			for (int j = 0; j < sectionSize; j++)
+			{
+				*(unvoicedSignal + *(sample.pitchMarkers + i) + j) = (*(unvoicedSignal + *(sample.pitchMarkers + i - 1) + j) + *(unvoicedSignal + *(sample.pitchMarkers + i + 2) - sectionSize + j)) / 2.;
+			}
+		}
     }
 }
 
@@ -583,6 +567,17 @@ void separateVoicedUnvoiced(cSample sample, engineCfg config)
     {
         separateVoicedUnvoicedSingleWindow(i, evaluationPoints, dftCoeffs, sample, config);
     }
+    for (int i = 0; i < sample.config.markerLength - 1; i++)
+    {
+        if (*(sample.pitchMarkerValidity + i) == 0)
+		{
+			for (int j = 0; j < config.halfHarmonics; j++)
+			{
+				(*(dftCoeffs + i * config.halfHarmonics + j))[0] = ((*(dftCoeffs + (i - 1) * config.halfHarmonics + j))[0] + (*(dftCoeffs + (i + 1) * config.halfHarmonics + j))[0]) / 2;
+				(*(dftCoeffs + i * config.halfHarmonics + j))[1] = ((*(dftCoeffs + (i - 1) * config.halfHarmonics + j))[1] + (*(dftCoeffs + (i + 1) * config.halfHarmonics + j))[1]) / 2;
+			}
+		}
+	}
     separateVoicedUnvoicedPostProc(dftCoeffs, sample, config);
 	constructVoicedSignal(dftCoeffs, sample, config);
 	constructUnvoicedSignal(evaluationPoints, dftCoeffs, unvoicedSignal, sample, config);

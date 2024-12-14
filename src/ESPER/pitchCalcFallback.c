@@ -10,6 +10,7 @@
 #include <malloc.h>
 #include <math.h>
 #include "src/util.h"
+#include "src/interpolation.h"
 
 //defines a struct for a marker candidate in the pitch calculation process.
 //attributes:
@@ -192,6 +193,87 @@ void fillPitchMarkers(dynIntArray zeroTransitions, MarkerCandidate* markerCandid
 	}
 }
 
+void checkMarkerValidity(cSample* sample, engineCfg config)
+{
+	//first and last marker are always valid
+	*(sample->pitchMarkerValidity) = 1;
+	*(sample->pitchMarkerValidity + sample->config.markerLength - 2) = 1;
+	for (int i = 1; i < sample->config.markerLength - 2; i++)
+	{
+		int sectionSize = *(sample->pitchMarkers + i + 1) - *(sample->pitchMarkers + i);
+		int previousSize = *(sample->pitchMarkers + i) - *(sample->pitchMarkers + i - 1);
+		int nextSize = *(sample->pitchMarkers + i + 2) - *(sample->pitchMarkers + i + 1);
+
+		if (previousSize <= sectionSize + 2 || nextSize <= sectionSize + 2)
+		{
+			*(sample->pitchMarkerValidity + i) = 1;
+			continue;
+		}
+
+		float validError = 0;
+
+		float* windowSpace = (float*)malloc(sectionSize * sizeof(float));
+		for (int j = 0; j < sectionSize; j++)
+		{
+			*(windowSpace + j) = j;
+		}
+		float* previousSpace = (float*)malloc(previousSize * sizeof(float));
+		for (int j = 0; j < previousSize; j++)
+		{
+			*(previousSpace + j) = j * (float)sectionSize / (float)previousSize;
+		}
+		float* nextSpace = (float*)malloc(nextSize * sizeof(float));
+		for (int j = 0; j < nextSize; j++)
+		{
+			*(nextSpace + j) = j * (float)sectionSize / (float)nextSize;
+		}
+		float* window = sample->waveform + *(sample->pitchMarkers + i);
+		float* previous = sample->waveform + *(sample->pitchMarkers + i - 1);
+		float* next = sample->waveform + *(sample->pitchMarkers + i + 2) - sectionSize;
+		float* previous_interp = interp(previousSpace, previous, windowSpace, previousSize, sectionSize);
+		float* next_interp = interp(nextSpace, next, windowSpace, nextSize, sectionSize);
+		for (int j = 0; j < sectionSize; j++)
+		{
+			validError += powf((*(window + j) - (*(previous_interp + j) + *(next_interp + j)) / 2.), 2.);
+		}
+		free(windowSpace);
+		free(previousSpace);
+		free(nextSpace);
+		free(previous_interp);
+		free(next_interp);
+
+		float invalidError = 0.;
+		for (int j = 0; j < sectionSize; j++)
+		{
+			float alternative = *(sample->waveform + *(sample->pitchMarkers + i - 1) + j) + (*(sample->waveform + *(sample->pitchMarkers + i + 2) - sectionSize + j));
+			invalidError += powf(alternative / 2., 2.);
+		}
+		if (invalidError < validError)
+		{
+			*(sample->pitchMarkerValidity + i) = 0;
+		}
+		else
+		{
+			*(sample->pitchMarkerValidity + i) = 1;
+		}
+	}
+}
+
+int getValidPitchDelta(cSample* sample, int index)
+{
+	if (*(sample->pitchMarkerValidity + index) == 1)
+	{
+		return *(sample->pitchMarkers + index + 1) - *(sample->pitchMarkers + index);
+	}
+	else
+	{
+		//adjacent markers are never both invalid, since an invalid marker requires two larger adjacent marker distances
+		int nextDelta = *(sample->pitchMarkers + index + 2) - *(sample->pitchMarkers + index + 1);
+		int previousDelta = *(sample->pitchMarkers + index) - *(sample->pitchMarkers + index - 1);
+		return (nextDelta + previousDelta) / 2;
+	}
+}
+
 //fills an array of pitch deltas with the differences between the pitch markers.
 //pitch markers represent the pitch curve in pitch-synchronous form, while the pitch deltas represent the pitch at constant time intervals.
 //Therefore, the pitch deltas are calculated by finding the pitch markers closest to the current time interval, and taking the difference between them.
@@ -211,7 +293,7 @@ void fillPitchDeltas(cSample* sample, engineCfg config)
 		}
 		else
 		{
-			*(sample->pitchDeltas + i) = sample->pitchMarkers[cursor] - sample->pitchMarkers[cursor - 1];
+			*(sample->pitchDeltas + i) = getValidPitchDelta(sample, cursor - 1);
 		}
 	}
 }
@@ -279,7 +361,8 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 	dynIntArray_dealloc(&zeroTransitions);
 	free(markerCandidates);
 	free(smoothedWave);
+	checkMarkerValidity(sample, config);
 	fillPitchDeltas(sample, config);
-	filterPitchDeltas(sample);
+	//filterPitchDeltas(sample);
 	sample->config.pitch = median(sample->pitchDeltas, sample->config.pitchLength);
 }
