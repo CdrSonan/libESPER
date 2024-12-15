@@ -298,33 +298,6 @@ void fillPitchDeltas(cSample* sample, engineCfg config)
 	}
 }
 
-//filters the pitch deltas using a median filter with a window size of 5.
-void filterPitchDeltas(cSample* sample)
-{
-	int* medianBuffer = (int*)malloc(5 * sizeof(int));
-	int* filteredDeltas = (int*)malloc(sample->config.batches * sizeof(int));
-	for (int i = 0; i < sample->config.batches; i++)
-	{
-		if (i < 2 || i > sample->config.batches - 3)
-		{
-			*(filteredDeltas + i) = *(sample->pitchDeltas + i);
-		}
-		else
-		{
-			for (int j = 0; j < 5; j++) {
-				*(medianBuffer + j) = *(sample->pitchDeltas + i - 2 + j);
-			}
-			*(filteredDeltas + i) = median(medianBuffer, 5);
-		}
-	}
-	free(medianBuffer);
-	for (int i = 0; i < sample->config.batches; i++)
-	{
-		*(sample->pitchDeltas + i) = *(filteredDeltas + i);
-	}
-	free(filteredDeltas);
-}
-
 //master function for pitch calculation.
 //Fills the pitchMarkers and pitchDeltas arrays of a sample, representing the pitch in pitych-synchronous and constant time intervals, respectively, and calculates the median pitch.
 //The name "fallback" is left over from a previous version, where it was only used if pitch calculation using torchaudio failed.
@@ -363,6 +336,5 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 	free(smoothedWave);
 	checkMarkerValidity(sample, config);
 	fillPitchDeltas(sample, config);
-	//filterPitchDeltas(sample);
 	sample->config.pitch = median(sample->pitchDeltas, sample->config.pitchLength);
 }
