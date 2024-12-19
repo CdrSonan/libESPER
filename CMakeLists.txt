@@ -4,6 +4,23 @@ project(libESPER VERSION 0.7.6 LANGUAGES C)
 include(CTest)
 enable_testing()
 
+find_package(Git QUIET)
+if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/.git")
+# Update submodules as needed
+    option(GIT_SUBMODULE "Check submodules during build" ON)
+    if(GIT_SUBMODULE)
+        message(STATUS "Submodule update")
+        execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
+                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                        RESULT_VARIABLE GIT_SUBMOD_RESULT)
+        if(NOT GIT_SUBMOD_RESULT EQUAL "0")
+            message(FATAL_ERROR "git submodule update --init --recursive failed with ${GIT_SUBMOD_RESULT}, please checkout submodules")
+        endif()
+    endif()
+endif()
+
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/bundled")
+
 add_library(esper SHARED
     src/ESPER/esper.c
     src/ESPER/pitchCalcFallback.c
@@ -25,6 +42,15 @@ set_property(TARGET esper PROPERTY WINDOWS_EXPORT_ALL_SYMBOLS ON)
 if (WIN32)
     target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw_win/libfftw3f-3.lib")
     target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/nfft_win/libnfft3_threads-4.lib")
+    add_custom_command(TARGET esper POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:esper> "${CMAKE_BINARY_DIR}/bundled/esper.dll"
+    )
+    add_custom_command(TARGET esper POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftw_win/libfftw3f-3.dll" "${CMAKE_BINARY_DIR}/bundled/libfftw3f-3.dll"
+    )
+    add_custom_command(TARGET esper POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/nfft_win/libnfft3_threads-4.dll" "${CMAKE_BINARY_DIR}/bundled/libnfft3_threads-4.dll"
+    )
 else()
     target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw/.libs/libfftw3f.a")
     target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/nfft/.libs/libnfft3.a")
