@@ -64,8 +64,8 @@ else()
     add_dependencies(esper fftwf nfft)
     target_include_directories(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf")
     target_include_directories(esper PRIVATE "${PROJECT_SOURCE_DIR}/nfft/src/nfft")
-    target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf-build/.libs/libfftw3f.so.3")
-    target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/nfft/src/nfft-build/.libs/libnfft3.so.4")
+    target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf-build/.libs/libfftw3f.so")
+    target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/nfft/src/nfft-build/.libs/libnfft3.so")
     target_link_libraries(esper PRIVATE m)
     set_target_properties(esper PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
@@ -74,13 +74,13 @@ else()
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:esper> "${CMAKE_BINARY_DIR}/bundled/libesper.so"
     )
     add_custom_command(TARGET esper POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf-build/.libs/libfftw3f.so.3" "${CMAKE_BINARY_DIR}/bundled/libfftw3f.so.3"
+        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf-build/.libs/libfftw3f.so" "${CMAKE_BINARY_DIR}/bundled/libfftw3f.so"
     )
     add_custom_command(TARGET esper POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftw/src/fftw-build/.libs/libfftw3.so.3" "${CMAKE_BINARY_DIR}/bundled/libfftw3.so.3"
+        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftw/src/fftw-build/.libs/libfftw3.so" "${CMAKE_BINARY_DIR}/bundled/libfftw3.so"
     )
     add_custom_command(TARGET esper POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/nfft/src/nfft-build/.libs/libnfft3.so.4" "${CMAKE_BINARY_DIR}/bundled/libnfft3.so.4"
+        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/nfft/src/nfft-build/.libs/libnfft3.so" "${CMAKE_BINARY_DIR}/bundled/libnfft3.so"
     )
 endif(WIN32)
 
