@@ -56,9 +56,12 @@ dkms.conf
 .vscode/
 
 # output directory
-out/
 build/
-build-linux/
+
+# dependency directories
+fftw/
+fftwf/
+nfft/
 
 # CMake
 CMakeSettings.json

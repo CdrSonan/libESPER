@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.22)
 project(libESPER VERSION 0.7.6 LANGUAGES C)
 
+include(ExternalProject)
+
 include(CTest)
 enable_testing()
 
@@ -38,27 +40,45 @@ if (WIN32)
     )
 else()
     ExternalProject_add(fftwf
-        PREFIX "${CMAKE_BINARY_DIR}/fftwf"
+        PREFIX "${PROJECT_SOURCE_DIR}/fftwf"
         URL "http://www.fftw.org/fftw-3.3.10.tar.gz"
-        CONFIGURE_COMMAND "${CMAKE_BINARY_DIR}/fftwf/src/fftwf/configure" --enable-float --disable-fortran --enable-shared=no --enable-static=yes
+        DOWNLOAD_EXTRACT_TIMESTAMP true
+        CONFIGURE_COMMAND "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf/configure" --enable-float --enable-shared=yes --enable-static=no
+        INSTALL_COMMAND ""
     )
     ExternalProject_add(fftw
-        PREFIX "${CMAKE_BINARY_DIR}/fftw"
+        PREFIX "${PROJECT_SOURCE_DIR}/fftw"
         URL "http://www.fftw.org/fftw-3.3.10.tar.gz"
-        CONFIGURE_COMMAND "${CMAKE_BINARY_DIR}/fftw/src/fftw/configure" --enable-threads --enable-shared=no --enable-static=yes
+        DOWNLOAD_EXTRACT_TIMESTAMP true
+        CONFIGURE_COMMAND "${PROJECT_SOURCE_DIR}/fftw/src/fftw/configure" --enable-threads --with-combined-threads --enable-shared=yes --enable-static=no
+        INSTALL_COMMAND ""
     )
     ExternalProject_add(nfft
-        PREFIX "${CMAKE_BINARY_DIR}/nfft"
+        PREFIX "${PROJECT_SOURCE_DIR}/nfft"
         URL "https://www-user.tu-chemnitz.de/~potts/nfft/download/nfft-3.5.3.tar.gz"
-        CONFIGURE_COMMAND "${CMAKE_BINARY_DIR}/nfft/src/nfft/configure" --enable-all --enable-openmp --enable-shared=no --enable-static=yes
+        DOWNLOAD_EXTRACT_TIMESTAMP true
+        CONFIGURE_COMMAND "${PROJECT_SOURCE_DIR}/nfft/src/nfft/configure" --enable-all --with-fftw3-libdir=${PROJECT_SOURCE_DIR}/fftw/src/fftw-build/.libs/ --enable-shared=yes --enable-static=no
+        INSTALL_COMMAND ""
     )
     add_dependencies(nfft fftw)
     add_dependencies(esper fftwf nfft)
-    target_include_directories(esper PRIVATE "${CMAKE_BINARY_DIR}/fftwf/src/fftwf")
-    target_include_directories(esper PRIVATE "${CMAKE_BINARY_DIR}/nfft/src/nfft")
-    target_link_libraries(esper PRIVATE "${CMAKE_BINARY_DIR}/fftwf/src/fftwf-build/.libs/libfftw3f.a")
-    target_link_libraries(esper PRIVATE "${CMAKE_BINARY_DIR}/nfft/src/nfft-build/.libs/libnfft3.a")
+    target_include_directories(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf")
+    target_include_directories(esper PRIVATE "${PROJECT_SOURCE_DIR}/nfft/src/nfft")
+    target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf-build/.libs/libfftw3f.so")
+    target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/nfft/src/nfft-build/.libs/libnfft3.so")
     target_link_libraries(esper PRIVATE m)
+    add_custom_command(TARGET esper POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_BINARY_DIR}/libesper.so" "${CMAKE_BINARY_DIR}/bundled/libesper.so"
+    )
+    add_custom_command(TARGET esper POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf-build/.libs/libfftw3f.so" "${CMAKE_BINARY_DIR}/bundled/libfftw3f-.so"
+    )
+    add_custom_command(TARGET esper POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftw/src/fftw-build/.libs/libfftw3.so" "${CMAKE_BINARY_DIR}/bundled/libfftw3.so"
+    )
+    add_custom_command(TARGET esper POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/nfft/src/nfft-build/.libs/libnfft3.so" "${CMAKE_BINARY_DIR}/bundled/libnfft3.so"
+    )
 endif(WIN32)
 
 add_executable(test_esper
@@ -72,11 +92,6 @@ if (WIN32)
     target_link_libraries(test_esper PRIVATE "${PROJECT_SOURCE_DIR}/fftw_win/libfftw3f-3.lib")
     target_link_libraries(test_esper PRIVATE "${PROJECT_SOURCE_DIR}/nfft_win/libnfft3_threads-4.lib")
 else()
-    add_dependencies(test_esper fftwf nfft esper)
-    target_include_directories(test_esper PRIVATE "${CMAKE_BINARY_DIR}/fftwf/src/fftwf")
-    target_include_directories(test_esper PRIVATE "${CMAKE_BINARY_DIR}/nfft/src/nfft")
-    target_link_libraries(test_esper PRIVATE "${CMAKE_BINARY_DIR}/fftwf/src/fftwf-build/.libs/libfftw3f.a")
-    target_link_libraries(test_esper PRIVATE "${CMAKE_BINARY_DIR}/nfft/src/nfft-build/.libs/libnfft3.a")
     target_link_libraries(test_esper PRIVATE m)
 endif(WIN32)
 
@@ -95,7 +110,7 @@ foreach(TEST_ARG IN LISTS TEST_ARGS_LIST)
         set_tests_properties(test_esper_${TEST_ARG} PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_append:${PROJECT_SOURCE_DIR}/nfft_win")
     else()
         #This should not be necessary with static linking
-        set_tests_properties(test_esper_${TEST_ARG} PROPERTIES ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_append:${PROJECT_SOURCE_DIR}/fftwf/src/fftwf/.libs")
-        set_tests_properties(test_esper_${TEST_ARG} PROPERTIES ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_append:${PROJECT_SOURCE_DIR}/nfft/src/nfft/.libs")
+        #set_tests_properties(test_esper_${TEST_ARG} PROPERTIES ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_append:${PROJECT_SOURCE_DIR}/fftwf/src/fftwf/.libs")
+        #set_tests_properties(test_esper_${TEST_ARG} PROPERTIES ENVIRONMENT_MODIFICATION "LD_LIBRARY_PATH=path_list_append:${PROJECT_SOURCE_DIR}/nfft/src/nfft/.libs")
     endif(WIN32)
 endforeach()
