@@ -67,6 +67,9 @@ else()
     target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf-build/.libs/libfftw3f.so")
     target_link_libraries(esper PRIVATE "${PROJECT_SOURCE_DIR}/nfft/src/nfft-build/.libs/libnfft3.so")
     target_link_libraries(esper PRIVATE m)
+    set_target_properties(ESPER-Utau PROPERTIES
+        BUILD_WITH_INSTALL_RPATH TRUE
+        INSTALL_RPATH "$ORIGIN/")
     add_custom_command(TARGET esper POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:esper> "${CMAKE_BINARY_DIR}/bundled/libesper.so"
     )
