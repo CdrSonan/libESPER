@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(libESPER VERSION 0.7.6 LANGUAGES C)
+project(libESPER VERSION 1.0.0 LANGUAGES C)
 
 include(ExternalProject)
 
@@ -71,7 +71,7 @@ else()
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:esper> "${CMAKE_BINARY_DIR}/bundled/libesper.so"
     )
     add_custom_command(TARGET esper POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf-build/.libs/libfftw3f.so" "${CMAKE_BINARY_DIR}/bundled/libfftw3f-.so"
+        COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftwf/src/fftwf-build/.libs/libfftw3f.so" "${CMAKE_BINARY_DIR}/bundled/libfftw3f.so"
     )
     add_custom_command(TARGET esper POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/fftw/src/fftw-build/.libs/libfftw3.so" "${CMAKE_BINARY_DIR}/bundled/libfftw3.so"
