@@ -132,7 +132,7 @@ void buildPitchGraph(MarkerCandidate* markerCandidates, int markerCandidateLengt
 			}
 			double newError = 0;
 			double contrast = 0;
-			if (positionJ < batchSize)
+			if (positionJ < delta)
 			{
 				for (int k = 0; k < delta; k++)
 				{
@@ -140,7 +140,7 @@ void buildPitchGraph(MarkerCandidate* markerCandidates, int markerCandidateLengt
 					contrast += *(smoothedWave + positionI + k) * sinf(2. * pi * k / delta);
 				}
 			}
-			else if (positionI >= sample->config.length - batchSize)
+			else if (positionI >= sample->config.length - delta)
 			{
 				for (int k = 0; k < delta; k++)
 				{
