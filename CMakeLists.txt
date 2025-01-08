@@ -81,6 +81,7 @@ else()
     )
     add_custom_command(TARGET esper POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/nfft/src/nfft-build/.libs/libnfft3.so.4" "${CMAKE_BINARY_DIR}/bundled/libnfft3.so.4"
+        COMMAND patchelf --set-rpath '\$\$ORIGIN/' "${CMAKE_BINARY_DIR}/bundled/libnfft3.so.4"
     )
 endif(WIN32)
 
