@@ -17,7 +17,7 @@ void LIBESPER_CDECL specCalc(cSample sample, engineCfg config)
 {
     sample.config.batches = sample.config.length / config.batchSize;
     separateVoicedUnvoiced(sample, config);
-    smoothFourierSpace(sample, config);
-	smoothTempSpace(sample, config);
+    //smoothFourierSpace(sample, config);
+	//smoothTempSpace(sample, config);
     finalizeSample(sample, config);
 }

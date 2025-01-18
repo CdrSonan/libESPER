@@ -165,50 +165,88 @@ float* gaussWindow(int length, float sigma)
 	return window;
 }
 
+float squaredDistance(float x1, float y1, float x2, float y2)
+{
+	return powf(x1 - x2, 2) + powf(y1 - y2, 2);
+}
+
 //post-processing for voiced-unvoiced separation after all windows have been processed.
 //applies adaptive smoothing to the assumed voiced part of the signal.
 void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, engineCfg config)
 {
+	float trimRatio = 0.5;
 	int effectiveLength = sample.config.markerLength - 1;
-	int kernelSize = 10;
-	float sigmaBase = 5;
-    fftw_complex* medianDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
-	fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
-    float* medianBuffer = (float*)malloc(5 * sizeof(float));
-    //temporal smoothing
-    for (int i = 0; i < config.halfHarmonics; i++)
-    {
-		float sigma = sigmaBase * powf(1. - (float)(i) / (float)config.halfHarmonics, 2.);
-        float* kernel = gaussWindow(kernelSize, sigma);
-	    for (int j = 0; j < effectiveLength; j++)
-	    {
-			(*(smoothedDftCoeffs + j * config.halfHarmonics + i))[0] = 0.;
-			(*(smoothedDftCoeffs + j * config.halfHarmonics + i))[1] = 0.;
-			for (int k = -(kernelSize / 2); k < kernelSize - (kernelSize / 2); k++)
+	int kernelSize = 24;
+    // 
+    fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
+    float* realBuffer = (float*)malloc(kernelSize * sizeof(float));
+    float* imagBuffer = (float*)malloc(kernelSize * sizeof(float));
+	for (int i = 0; i < effectiveLength; i++)
+	{
+		for (int j = 0; j < config.halfHarmonics; j++)
+		{
+			//get correct pointer to dftCoeffs
+			int index = i - kernelSize / 2;
+			if (index < 0)
 			{
-				int index = j + k;
-				if (index < 0)
-				{
-					index = 0;
-				}
-				if (index >= effectiveLength)
-				{
-					index = effectiveLength - 1;
-				}
-				(*(smoothedDftCoeffs + j * config.halfHarmonics + i))[0] += *(kernel + k + (kernelSize / 2)) * (*(dftCoeffs + index * config.halfHarmonics + i))[0];
-				(*(smoothedDftCoeffs + j * config.halfHarmonics + i))[1] += *(kernel + k + (kernelSize / 2)) * (*(dftCoeffs + index * config.halfHarmonics + i))[1];
+				index = 0;
 			}
+			else if (index >= effectiveLength)
+			{
+				index = effectiveLength - 1;
+			}
+			fftw_complex* window = dftCoeffs + index * config.halfHarmonics;
+			//sort window into new buffer
+			for (int k = 0; k < kernelSize; k++)
+			{
+				*(realBuffer + k) = (*(window + k))[0];
+				*(imagBuffer + k) = (*(window + k))[1];
+			}
+			qsort(realBuffer, kernelSize, sizeof(float), compareFloats);
+			qsort(imagBuffer, kernelSize, sizeof(float), compareFloats);
+			//get median, assuming even kernel size
+			float realMedian = (*(realBuffer + kernelSize / 2 - 1) + *(realBuffer + kernelSize / 2)) / 2.;
+			float imagMedian = (*(imagBuffer + kernelSize / 2 - 1) + *(imagBuffer + kernelSize / 2)) / 2.;
+			//trim sorted buffers
+			int leftTrim = 0;
+			int rightTrim = kernelSize - 1;
+            for (int k = 0; k < trimRatio * kernelSize; k++)
+            {
+				float leftDistance = squaredDistance(realMedian, imagMedian, *(realBuffer + leftTrim), *(imagBuffer + leftTrim));
+				float rightDistance = squaredDistance(realMedian, imagMedian, *(realBuffer + rightTrim), *(imagBuffer + rightTrim));
+                if (leftDistance > rightDistance)
+                {
+                    leftTrim++;
+                }
+				else
+				{
+					rightTrim--;
+				}
+            }
+			//calculate mean of trimmed buffer
+			float realMean = 0.;
+			float imagMean = 0.;
+			for (int k = leftTrim; k <= rightTrim; k++)
+			{
+				realMean += *(realBuffer + k);
+				imagMean += *(imagBuffer + k);
+			}
+			realMean /= rightTrim - leftTrim + 1;
+			imagMean /= rightTrim - leftTrim + 1;
+			//store mean in smoothedDftCoeffs
+			(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] = realMean;
+			(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] = imagMean;
 		}
-        free(kernel);
 	}
+	free(realBuffer);
+	free(imagBuffer);
+	//copy smoothedDftCoeffs to dftCoeffs
 	for (int i = 0; i < effectiveLength * config.halfHarmonics; i++)
 	{
         (*(dftCoeffs + i))[0] = (*(smoothedDftCoeffs + i))[0];
         (*(dftCoeffs + i))[1] = (*(smoothedDftCoeffs + i))[1];
 	}
 	free(smoothedDftCoeffs);
-    free(medianDftCoeffs);
-    free(medianBuffer);
 }
 
 //constructs a voiced signal from a set of fourier coefficients, and saves it in the sample object.
@@ -356,7 +394,7 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, 
         }
         nfft_trafo_1d(&inverseNUFFT);
 
-		float localPitch = *(sample.pitchMarkers + i + 1) - *(sample.pitchMarkers + i);
+		/*float localPitch = *(sample.pitchMarkers + i + 1) - *(sample.pitchMarkers + i);
         float referencePitch;
 		if (i == 0)
 		{
@@ -387,7 +425,7 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, 
 		else
 		{
 			pitchDivergence = (referencePitch - localPitch) / (localPitch + referencePitch);
-		}
+		}*/
         float multiplier = 1.;// - pitchDivergence;
 		for (int j = 0; j < start_inner - start_outer; j++)
 		{
