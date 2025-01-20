@@ -170,15 +170,102 @@ float squaredDistance(float x1, float y1, float x2, float y2)
 	return powf(x1 - x2, 2) + powf(y1 - y2, 2);
 }
 
+float squaredDistance_cpx(fftw_complex cpx1, fftw_complex cpx2)
+{
+	return powf(cpx1[0] - cpx2[0], 2) + powf(cpx1[1] - cpx2[1], 2);
+}
+
 //post-processing for voiced-unvoiced separation after all windows have been processed.
 //applies adaptive smoothing to the assumed voiced part of the signal.
 void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, engineCfg config)
 {
+    int effectiveLength = sample.config.markerLength - 1;
+    int kernelSize = 24;
+    fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
+    for (int i = 0; i < effectiveLength; i++)
+    {
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+            //get correct pointer to dftCoeffs
+            int index = i - kernelSize / 2;
+            if (index < 0)
+            {
+                index = 0;
+            }
+            else if (index >= effectiveLength)
+            {
+                index = effectiveLength - 1;
+            }
+            fftw_complex* window = dftCoeffs + index * config.halfHarmonics;
+            //initialize required variables
+            char jumpPoint = 1;
+            float threshold = 0;
+            fftw_complex leftSum = { (*(window + j))[0], (*(window + j))[1] };
+		    fftw_complex rightSum = { 0., 0. };
+			for (int k = 1; k < kernelSize; k++)
+			{
+				rightSum[0] += (*(window + k))[0];
+				rightSum[1] += (*(window + k))[1];
+			}
+            //loop through possible jump points
+            for (int k = 1; k < kernelSize; k++)
+            {
+				fftw_complex leftMean = { leftSum[0] / k, leftSum[1] / k };
+				fftw_complex rightMean = { rightSum[0] / (kernelSize - k), rightSum[1] / (kernelSize - k) };
+				float distance = squaredDistance_cpx(leftMean, rightMean);
+				if (distance > threshold)
+				{
+					threshold = distance;
+					jumpPoint = k;
+				}
+				leftSum[0] += (*(window + k))[0];
+				leftSum[1] += (*(window + k))[1];
+				rightSum[0] -= (*(window + k))[0];
+				rightSum[1] -= (*(window + k))[1];
+			}
+            //calculate mean of the side containing the window center
+			(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] = 0.;
+			(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] = 0.;
+            if (jumpPoint < kernelSize / 2)
+            {
+				for (int k = 0; k < jumpPoint; k++)
+				{
+					(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] += (*(window + k))[0];
+					(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] += (*(window + k))[1];
+				}
+				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] /= jumpPoint;
+				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] /= jumpPoint;
+            }
+            else
+            {
+                for (int k = jumpPoint; k < kernelSize; k++)
+                {
+                    (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] += (*(window + k))[0];
+                    (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] += (*(window + k))[1];
+                }
+				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] /= kernelSize - jumpPoint;
+				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] /= kernelSize - jumpPoint;
+			}
+        }
+    }
+    //copy smoothedDftCoeffs to dftCoeffs
+    for (int i = 0; i < effectiveLength * config.halfHarmonics; i++)
+    {
+        (*(dftCoeffs + i))[0] = (*(smoothedDftCoeffs + i))[0];
+        (*(dftCoeffs + i))[1] = (*(smoothedDftCoeffs + i))[1];
+    }
+    free(smoothedDftCoeffs);
+}
+
+void separateVoicedUnvoicedPostProc_alt(fftw_complex* dftCoeffs, cSample sample, engineCfg config)
+{
+	return;
 	float trimRatio = 0.5;
 	int effectiveLength = sample.config.markerLength - 1;
 	int kernelSize = 24;
     // 
     fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
+	float* distances = (float*)malloc(kernelSize * sizeof(float));
     float* realBuffer = (float*)malloc(kernelSize * sizeof(float));
     float* imagBuffer = (float*)malloc(kernelSize * sizeof(float));
 	for (int i = 0; i < effectiveLength; i++)
@@ -196,6 +283,10 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
 				index = effectiveLength - 1;
 			}
 			fftw_complex* window = dftCoeffs + index * config.halfHarmonics;
+
+			//TODO: replace sorting along dimensions individually with sorting along squared distance
+
+
 			//sort window into new buffer
 			for (int k = 0; k < kernelSize; k++)
 			{
@@ -207,6 +298,12 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
 			//get median, assuming even kernel size
 			float realMedian = (*(realBuffer + kernelSize / 2 - 1) + *(realBuffer + kernelSize / 2)) / 2.;
 			float imagMedian = (*(imagBuffer + kernelSize / 2 - 1) + *(imagBuffer + kernelSize / 2)) / 2.;
+			//calculate squared distances to median
+			for (int k = 0; k < kernelSize; k++)
+			{
+				*(distances + k) = squaredDistance(realMedian, imagMedian, *(realBuffer + k), *(imagBuffer + k));
+			}
+
 			//trim sorted buffers
 			int leftTrim = 0;
 			int rightTrim = kernelSize - 1;
