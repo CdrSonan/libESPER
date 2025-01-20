@@ -180,7 +180,7 @@ float squaredDistance_cpx(fftw_complex cpx1, fftw_complex cpx2)
 void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, engineCfg config)
 {
     int effectiveLength = sample.config.markerLength - 1;
-    int kernelSize = 24;
+    int kernelSize = 12;
     fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
     for (int i = 0; i < effectiveLength; i++)
     {
@@ -192,9 +192,9 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
             {
                 index = 0;
             }
-            else if (index >= effectiveLength)
+            else if (index > effectiveLength - kernelSize)
             {
-                index = effectiveLength - 1;
+                index = effectiveLength - kernelSize;
             }
             fftw_complex* window = dftCoeffs + index * config.halfHarmonics;
             //initialize required variables
@@ -226,12 +226,21 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
             //calculate mean of the side containing the window center
 			(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] = 0.;
 			(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] = 0.;
+
+            /*for (int k = 0; k < kernelSize; k++)
+            {
+                (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] += (*(window + j + config.halfHarmonics * k))[0];
+                (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] += (*(window + j + config.halfHarmonics * k))[1];
+            }
+            (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] /= kernelSize;
+            (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] /= kernelSize;*/
+
             if (jumpPoint < kernelSize / 2)
             {
 				for (int k = 0; k < jumpPoint; k++)
 				{
-					(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] += (*(window + k))[0];
-					(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] += (*(window + k))[1];
+					(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] += (*(window + j + config.halfHarmonics * k))[0];
+					(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] += (*(window + j + config.halfHarmonics * k))[1];
 				}
 				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] /= jumpPoint;
 				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] /= jumpPoint;
@@ -240,8 +249,8 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
             {
                 for (int k = jumpPoint; k < kernelSize; k++)
                 {
-                    (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] += (*(window + k))[0];
-                    (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] += (*(window + k))[1];
+                    (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] += (*(window + j + config.halfHarmonics * k))[0];
+                    (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] += (*(window + j + config.halfHarmonics * k))[1];
                 }
 				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] /= kernelSize - jumpPoint;
 				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] /= kernelSize - jumpPoint;
