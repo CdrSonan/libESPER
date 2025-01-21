@@ -175,12 +175,30 @@ float squaredDistance_cpx(fftw_complex cpx1, fftw_complex cpx2)
 	return powf(cpx1[0] - cpx2[0], 2) + powf(cpx1[1] - cpx2[1], 2);
 }
 
+void weightedDistance(fftw_complex point, fftw_complex mean, float variance, float weight, fftw_complex* result)
+{
+	if (variance == 0.)
+	{
+		(*result)[0] = point[0];
+		(*result)[1] = point[1];
+		return;
+	}
+	float distance = squaredDistance_cpx(point, mean);
+    weight *= 1. - exp(-distance / (1. * variance));
+    if (weight > 1.)
+	{
+		weight = 1.;
+	}
+	(*result)[0] = mean[0] + (point[0] - mean[0]) * weight;
+	(*result)[1] = mean[1] + (point[1] - mean[1]) * weight;
+}
+
 //post-processing for voiced-unvoiced separation after all windows have been processed.
 //applies adaptive smoothing to the assumed voiced part of the signal.
 void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, engineCfg config)
 {
     int effectiveLength = sample.config.markerLength - 1;
-    int kernelSize = 12;
+    int kernelSize = 24;
     fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
     for (int i = 0; i < effectiveLength; i++)
     {
@@ -204,8 +222,8 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
 		    fftw_complex rightSum = { 0., 0. };
 			for (int k = 1; k < kernelSize; k++)
 			{
-				rightSum[0] += (*(window + k))[0];
-				rightSum[1] += (*(window + k))[1];
+				rightSum[0] += (*(window + j + config.halfHarmonics * k))[0];
+				rightSum[1] += (*(window + j + config.halfHarmonics * k))[1];
 			}
             //loop through possible jump points
             for (int k = 1; k < kernelSize; k++)
@@ -218,51 +236,56 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
 					threshold = distance;
 					jumpPoint = k;
 				}
-				leftSum[0] += (*(window + k))[0];
-				leftSum[1] += (*(window + k))[1];
-				rightSum[0] -= (*(window + k))[0];
-				rightSum[1] -= (*(window + k))[1];
+				leftSum[0] += (*(window + j + config.halfHarmonics * k))[0];
+				leftSum[1] += (*(window + j + config.halfHarmonics * k))[1];
+				rightSum[0] -= (*(window + j + config.halfHarmonics * k))[0];
+				rightSum[1] -= (*(window + j + config.halfHarmonics * k))[1];
 			}
             //calculate mean of the side containing the window center
-			(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] = 0.;
-			(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] = 0.;
-
-            /*for (int k = 0; k < kernelSize; k++)
-            {
-                (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] += (*(window + j + config.halfHarmonics * k))[0];
-                (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] += (*(window + j + config.halfHarmonics * k))[1];
-            }
-            (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] /= kernelSize;
-            (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] /= kernelSize;*/
-
             if (jumpPoint < kernelSize / 2)
             {
+                fftw_complex mean = { 0., 0. };
+                for (int k = 0; k < jumpPoint; k++)
+                {
+                    mean[0] += (*(window + j + config.halfHarmonics * k))[0];
+                    mean[1] += (*(window + j + config.halfHarmonics * k))[1];
+                }
+				mean[0] /= jumpPoint;
+				mean[1] /= jumpPoint;
+				float variance = 0.;
 				for (int k = 0; k < jumpPoint; k++)
 				{
-					(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] += (*(window + j + config.halfHarmonics * k))[0];
-					(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] += (*(window + j + config.halfHarmonics * k))[1];
+					variance += squaredDistance_cpx(*(window + j + config.halfHarmonics * k), mean);
 				}
-				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] /= jumpPoint;
-				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] /= jumpPoint;
-            }
-            else
-            {
-                for (int k = jumpPoint; k < kernelSize; k++)
-                {
-                    (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] += (*(window + j + config.halfHarmonics * k))[0];
-                    (*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] += (*(window + j + config.halfHarmonics * k))[1];
-                }
-				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[0] /= kernelSize - jumpPoint;
-				(*(smoothedDftCoeffs + i * config.halfHarmonics + j))[1] /= kernelSize - jumpPoint;
+				variance /= jumpPoint;
+				weightedDistance(*(window + j + config.halfHarmonics * kernelSize / 2), mean, variance, powf((float)j / (float)config.halfHarmonics, 2.), smoothedDftCoeffs + i * config.halfHarmonics + j);
 			}
-        }
-    }
+			else
+			{
+				fftw_complex mean = { 0., 0. };
+				for (int k = jumpPoint; k < kernelSize; k++)
+				{
+					mean[0] += (*(window + j + config.halfHarmonics * k))[0];
+					mean[1] += (*(window + j + config.halfHarmonics * k))[1];
+				}
+				mean[0] /= kernelSize - jumpPoint;
+				mean[1] /= kernelSize - jumpPoint;
+				float variance = 0.;
+				for (int k = jumpPoint; k < kernelSize; k++)
+				{
+					variance += squaredDistance_cpx(*(window + j + config.halfHarmonics * k), mean);
+				}
+				variance /= kernelSize - jumpPoint;
+				weightedDistance(*(window + j + config.halfHarmonics * kernelSize / 2), mean, variance, powf((float)j / (float)config.halfHarmonics, 2.), smoothedDftCoeffs + i * config.halfHarmonics + j);
+			}
+		}
+	}
     //copy smoothedDftCoeffs to dftCoeffs
     for (int i = 0; i < effectiveLength * config.halfHarmonics; i++)
     {
         (*(dftCoeffs + i))[0] = (*(smoothedDftCoeffs + i))[0];
         (*(dftCoeffs + i))[1] = (*(smoothedDftCoeffs + i))[1];
-    }
+	}
     free(smoothedDftCoeffs);
 }
 
