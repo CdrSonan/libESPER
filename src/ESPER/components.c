@@ -177,10 +177,13 @@ float squaredDistance_cpx(fftw_complex cpx1, fftw_complex cpx2)
 
 void weightedDistance(fftw_complex point, fftw_complex mean, float variance, float weight, fftw_complex* result)
 {
+    (*result)[0] = mean[0];
+	(*result)[1] = mean[1];
+    return;
 	if (variance == 0.)
 	{
-		(*result)[0] = point[0];
-		(*result)[1] = point[1];
+		(*result)[0] = mean[0];
+		(*result)[1] = mean[1];
 		return;
 	}
 	float distance = squaredDistance_cpx(point, mean);
@@ -189,8 +192,8 @@ void weightedDistance(fftw_complex point, fftw_complex mean, float variance, flo
 	{
 		weight = 1.;
 	}
-    (*result)[0] = mean[0] + (point[0] - mean[0]) * weight;
-    (*result)[1] = mean[1] + (point[1] - mean[1]) * weight;
+    (*result)[0] = mean[0] +(point[0] - mean[0]) * weight;
+    (*result)[1] = mean[1] +(point[1] - mean[1]) * weight;
 }
 
 //post-processing for voiced-unvoiced separation after all windows have been processed.
@@ -198,87 +201,110 @@ void weightedDistance(fftw_complex point, fftw_complex mean, float variance, flo
 void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, engineCfg config)
 {
     int effectiveLength = sample.config.markerLength - 1;
-    int kernelSize = 6;
+    int kernelSize = 12;
     fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
+    float* leftSum = (float*)malloc(2 * config.halfHarmonics * sizeof(float));
+    float* rightSum = (float*)malloc(2 * config.halfHarmonics * sizeof(float));
     for (int i = 0; i < effectiveLength; i++)
     {
+        //get correct pointer to dftCoeffs
+        int index = i - kernelSize / 2;
+        if (index < 0)
+        {
+            index = 0;
+        }
+        else if (index > effectiveLength - kernelSize)
+        {
+            index = effectiveLength - kernelSize;
+        }
+        fftw_complex* window = dftCoeffs + index * config.halfHarmonics;
+        //initialize required variables
+        char jumpPoint = 1;
+        float threshold = 0;
         for (int j = 0; j < config.halfHarmonics; j++)
         {
-            //get correct pointer to dftCoeffs
-            int index = i - kernelSize / 2;
-            if (index < 0)
-            {
-                index = 0;
-            }
-            else if (index > effectiveLength - kernelSize)
-            {
-                index = effectiveLength - kernelSize;
-            }
-            fftw_complex* window = dftCoeffs + index * config.halfHarmonics;
-            //initialize required variables
-            char jumpPoint = 1;
-            float threshold = 0;
-            fftw_complex leftSum = { (*(window + j))[0], (*(window + j))[1] };
-		    fftw_complex rightSum = { 0., 0. };
-			for (int k = 1; k < kernelSize; k++)
-			{
-				rightSum[0] += (*(window + j + config.halfHarmonics * k))[0];
-				rightSum[1] += (*(window + j + config.halfHarmonics * k))[1];
-			}
-            //loop through possible jump points
+			leftSum[2 * j] = (*(window + j))[0];
+			leftSum[2 * j + 1] = (*(window + j))[1];
+			rightSum[2 * j] = 0.;
+			rightSum[2 * j + 1] = 0.;
             for (int k = 1; k < kernelSize; k++)
             {
-				fftw_complex leftMean = { leftSum[0] / k, leftSum[1] / k };
-				fftw_complex rightMean = { rightSum[0] / (kernelSize - k), rightSum[1] / (kernelSize - k) };
-				float distance = squaredDistance_cpx(leftMean, rightMean);
-				if (distance > threshold)
-				{
-					threshold = distance;
-					jumpPoint = k;
-				}
-				leftSum[0] += (*(window + j + config.halfHarmonics * k))[0];
-				leftSum[1] += (*(window + j + config.halfHarmonics * k))[1];
-				rightSum[0] -= (*(window + j + config.halfHarmonics * k))[0];
-				rightSum[1] -= (*(window + j + config.halfHarmonics * k))[1];
+				rightSum[2 * j] += (*(window + j + config.halfHarmonics * k))[0];
+				rightSum[2 * j + 1] += (*(window + j + config.halfHarmonics * k))[1];
+            }
+		}
+		//find jump point
+		for (int j = 0; j < kernelSize; j++)
+		{
+            float distance = 0.;
+			for (int k = 0; k < config.halfHarmonics; k++)
+			{
+                fftw_complex leftMean = { leftSum[2 * k] / j, leftSum[2 * k + 1] / j };
+				fftw_complex rightMean = { rightSum[2 * k] / (kernelSize - j), rightSum[2 * k + 1] / (kernelSize - j) };
+				distance += squaredDistance_cpx(leftMean, rightMean);
 			}
-            //calculate mean of the side containing the window center
-            if (jumpPoint < kernelSize / 2)
+			if (distance > threshold)
+			{
+				threshold = distance;
+				jumpPoint = j;
+			}
+            for (int k = 0; k < config.halfHarmonics; k++)
             {
-                fftw_complex mean = { 0., 0. };
-                for (int k = 0; k < jumpPoint; k++)
-                {
-                    mean[0] += (*(window + j + config.halfHarmonics * k))[0];
-                    mean[1] += (*(window + j + config.halfHarmonics * k))[1];
-                }
-				mean[0] /= jumpPoint;
-				mean[1] /= jumpPoint;
-				float variance = 0.;
+                leftSum[2 * k] += (*(window + k + config.halfHarmonics * j))[0];
+                leftSum[2 * k + 1] += (*(window + k + config.halfHarmonics * j))[1];
+                rightSum[2 * k] -= (*(window + k + config.halfHarmonics * j))[0];
+                rightSum[2 * k + 1] -= (*(window + k + config.halfHarmonics * j))[1];
+            }
+		}
+        //calculate mean of the side containing the window center
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+			leftSum[2 * j] = 0.;
+			leftSum[2 * j + 1] = 0.;
+        }
+		float variance = 0.;
+
+        if (jumpPoint >= kernelSize / 2)
+		{
+			for (int j = 0; j < config.halfHarmonics; j++)
+			{
 				for (int k = 0; k < jumpPoint; k++)
 				{
-					variance += squaredDistance_cpx(*(window + j + config.halfHarmonics * k), mean);
+					leftSum[2 * j] += (*(window + j + config.halfHarmonics * k))[0];
+					leftSum[2 * j + 1] += (*(window + j + config.halfHarmonics * k))[1];
 				}
-				variance /= jumpPoint;
-				weightedDistance(*(window + j + config.halfHarmonics * kernelSize / 2), mean, variance, 1. - powf((float)j / (float)config.halfHarmonics, 2.), smoothedDftCoeffs + i * config.halfHarmonics + j);
-			}
-			else
-			{
-				fftw_complex mean = { 0., 0. };
-				for (int k = jumpPoint; k < kernelSize; k++)
+				leftSum[2 * j] /= jumpPoint;
+				leftSum[2 * j + 1] /= jumpPoint;
+				for (int k = 0; k < jumpPoint; k++)
 				{
-					mean[0] += (*(window + j + config.halfHarmonics * k))[0];
-					mean[1] += (*(window + j + config.halfHarmonics * k))[1];
+					variance += squaredDistance(*(window + j + config.halfHarmonics * k)[0], *(window + j + config.halfHarmonics * k)[1], leftSum[2 * j], leftSum[2 * j + 1]);
 				}
-				mean[0] /= kernelSize - jumpPoint;
-				mean[1] /= kernelSize - jumpPoint;
-				float variance = 0.;
-				for (int k = jumpPoint; k < kernelSize; k++)
-				{
-					variance += squaredDistance_cpx(*(window + j + config.halfHarmonics * k), mean);
-				}
-				variance /= kernelSize - jumpPoint;
-				weightedDistance(*(window + j + config.halfHarmonics * kernelSize / 2), mean, variance, 1. - powf((float)j / (float)config.halfHarmonics, 2.), smoothedDftCoeffs + i * config.halfHarmonics + j);
 			}
+			variance /= jumpPoint * config.halfHarmonics;
 		}
+		else
+		{
+			for (int j = j = 0; j < config.halfHarmonics; j++)
+			{
+				for (int k = jumpPoint; k < kernelSize; k++)
+				{
+					leftSum[2 * j] += (*(window + j + config.halfHarmonics * k))[0];
+					leftSum[2 * j + 1] += (*(window + j + config.halfHarmonics * k))[1];
+				}
+				leftSum[2 * j] /= kernelSize - jumpPoint;
+				leftSum[2 * j + 1] /= kernelSize - jumpPoint;
+				for (int k = jumpPoint; k < kernelSize; k++)
+				{
+					variance += squaredDistance(*(window + j + config.halfHarmonics * k)[0], *(window + j + config.halfHarmonics * k)[1], leftSum[2 * j], leftSum[2 * j + 1]);
+				}
+			}
+			variance /= (kernelSize - jumpPoint) * config.halfHarmonics;
+		}
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+			fftw_complex mean = { leftSum[2 * j], leftSum[2 * j + 1] };
+            weightedDistance(*(window + j + config.halfHarmonics * kernelSize / 2), mean, variance, 1. - powf((float)j / (float)config.halfHarmonics, 2.), smoothedDftCoeffs + i * config.halfHarmonics + j);
+        }
 	}
     //copy smoothedDftCoeffs to dftCoeffs
     for (int i = 0; i < effectiveLength * config.halfHarmonics; i++)
@@ -287,6 +313,8 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
         (*(dftCoeffs + i))[1] = (*(smoothedDftCoeffs + i))[1];
 	}
     free(smoothedDftCoeffs);
+	free(leftSum);
+	free(rightSum);
 }
 
 //constructs a voiced signal from a set of fourier coefficients, and saves it in the sample object.
