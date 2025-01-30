@@ -201,7 +201,7 @@ void weightedDistance(fftw_complex point, fftw_complex mean, float variance, flo
 void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, engineCfg config)
 {
     int effectiveLength = sample.config.markerLength - 1;
-    int kernelSize = 12;
+    int kernelSize = 10;
     fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
     float* leftSum = (float*)malloc(2 * config.halfHarmonics * sizeof(float));
     float* rightSum = (float*)malloc(2 * config.halfHarmonics * sizeof(float));
