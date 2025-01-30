@@ -101,7 +101,7 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 				*(tgtSpace + j) = config.halfTripleBatchSize;
 			}
 			*(srcVals + j) = *(specharm + i * config.frameSize + j);
-			srcAmplitude += powf(*(srcVals + j), 2.);
+			srcAmplitude += *(srcVals + j);
 		}
 		for (int j = config.halfHarmonics; j < srcSize; j++)
 		{
@@ -112,15 +112,12 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 		for (int j = 0; j < config.halfHarmonics; j++)
 		{
 			*(specharm + i * config.frameSize + j) = *(tgtVals + j);
-			tgtAmplitude += powf(*(tgtVals + j), 2.);
+			tgtAmplitude += *(tgtVals + j);
 		}
 		free(tgtVals);
-		if (srcAmplitude < tgtAmplitude && tgtAmplitude > 0.)
+		for (int j = 0; j < config.halfHarmonics; j++)
 		{
-			for (int j = 0; j < config.halfHarmonics; j++)
-			{
-				*(specharm + i * config.frameSize + j) *= srcAmplitude / tgtAmplitude;
-			}
+			*(specharm + i * config.frameSize + j) *= sqrtf(srcAmplitude / tgtAmplitude);
 		}
 		float modEffTgtPitch;
 		if (*(breathiness + i) > 0.)
@@ -141,7 +138,7 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 			{
 				*(shiftedSpectrumSpace + j) = config.halfTripleBatchSize;
 			}
-			srcAmplitude += powf(*(specharm + i * config.frameSize + config.nHarmonics + 2 + j), 2.);
+			srcAmplitude += *(specharm + i * config.frameSize + config.nHarmonics + 2 + j);
 		}
 		float* multipliers = interp(
 			spectrumSpace,
@@ -153,14 +150,14 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
 		{
 			*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) = *(multipliers + j);
-			tgtAmplitude += powf(*(specharm + i * config.frameSize + config.nHarmonics + 2 + j), 2.);
+			tgtAmplitude += *(specharm + i * config.frameSize + config.nHarmonics + 2 + j);
 		}
 		free(multipliers);
 		if (srcAmplitude < tgtAmplitude && tgtAmplitude > 0.)
 		{
 			for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
 			{
-				*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= srcAmplitude / tgtAmplitude;
+				*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= sqrtf(srcAmplitude / tgtAmplitude);
 			}
 		}
 	}

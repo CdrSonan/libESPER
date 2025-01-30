@@ -165,50 +165,189 @@ float* gaussWindow(int length, float sigma)
 	return window;
 }
 
+float squaredDistance(float x1, float y1, float x2, float y2)
+{
+	return powf(x1 - x2, 2) + powf(y1 - y2, 2);
+}
+
+float squaredDistance_cpx(fftw_complex cpx1, fftw_complex cpx2)
+{
+	return powf(cpx1[0] - cpx2[0], 2) + powf(cpx1[1] - cpx2[1], 2);
+}
+
+void weightedDistance(fftw_complex point, fftw_complex mean, float variance, float weight, fftw_complex* result)
+{
+    (*result)[0] = mean[0];
+	(*result)[1] = mean[1];
+    return;
+	if (variance == 0.)
+	{
+		(*result)[0] = mean[0];
+		(*result)[1] = mean[1];
+		return;
+	}
+	float distance = squaredDistance_cpx(point, mean);
+    weight *= exp(-distance / (2. * variance));
+    if (weight > 1.)
+	{
+		weight = 1.;
+	}
+    (*result)[0] = mean[0] +(point[0] - mean[0]) * weight;
+    (*result)[1] = mean[1] +(point[1] - mean[1]) * weight;
+}
+
 //post-processing for voiced-unvoiced separation after all windows have been processed.
 //applies adaptive smoothing to the assumed voiced part of the signal.
 void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, engineCfg config)
 {
-	int effectiveLength = sample.config.markerLength - 1;
-	int kernelSize = 10;
-	float sigmaBase = 5;
-    fftw_complex* medianDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
-	fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
-    float* medianBuffer = (float*)malloc(5 * sizeof(float));
-    //temporal smoothing
-    for (int i = 0; i < config.halfHarmonics; i++)
+    int effectiveLength = sample.config.markerLength - 1;
+    int kernelSize = 10;
+    fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
+    float* leftSum = (float*)malloc(2 * config.halfHarmonics * sizeof(float));
+    float* rightSum = (float*)malloc(2 * config.halfHarmonics * sizeof(float));
+    for (int i = 0; i < effectiveLength; i++)
     {
-		float sigma = sigmaBase * powf(1. - (float)(i) / (float)config.halfHarmonics, 2.);
-        float* kernel = gaussWindow(kernelSize, sigma);
-	    for (int j = 0; j < effectiveLength; j++)
-	    {
-			(*(smoothedDftCoeffs + j * config.halfHarmonics + i))[0] = 0.;
-			(*(smoothedDftCoeffs + j * config.halfHarmonics + i))[1] = 0.;
-			for (int k = -(kernelSize / 2); k < kernelSize - (kernelSize / 2); k++)
-			{
-				int index = j + k;
-				if (index < 0)
+        //get correct pointer to dftCoeffs
+        int index = i - kernelSize / 2;
+        if (index < 0)
+        {
+            index = 0;
+        }
+        else if (index > effectiveLength - kernelSize)
+        {
+            index = effectiveLength - kernelSize;
+        }
+        fftw_complex* window = dftCoeffs + index * config.halfHarmonics;
+        //initialize required variables
+        char jumpPoint = 1;
+        float threshold = 0;
+        int leftSize = 1;
+		int rightSize = kernelSize - 1;
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+			leftSum[2 * j] = (*(window + j))[0];
+			leftSum[2 * j + 1] = (*(window + j))[1];
+			rightSum[2 * j] = 0.;
+			rightSum[2 * j + 1] = 0.;
+            for (int k = 1; k < kernelSize; k++)
+            {
+				if (sample.pitchMarkerValidity[index + k] == 0)
 				{
-					index = 0;
+					rightSize--;
+					continue;
 				}
-				if (index >= effectiveLength)
-				{
-					index = effectiveLength - 1;
-				}
-				(*(smoothedDftCoeffs + j * config.halfHarmonics + i))[0] += *(kernel + k + (kernelSize / 2)) * (*(dftCoeffs + index * config.halfHarmonics + i))[0];
-				(*(smoothedDftCoeffs + j * config.halfHarmonics + i))[1] += *(kernel + k + (kernelSize / 2)) * (*(dftCoeffs + index * config.halfHarmonics + i))[1];
-			}
+				rightSum[2 * j] += (*(window + j + config.halfHarmonics * k))[0];
+				rightSum[2 * j + 1] += (*(window + j + config.halfHarmonics * k))[1];
+            }
 		}
-        free(kernel);
+		//find jump point
+		for (int j = 1; j < kernelSize; j++)
+		{
+			if (sample.pitchMarkerValidity[index + j] == 0)
+			{
+				continue;
+			}
+            float distance = 0.;
+			for (int k = 0; k < config.halfHarmonics; k++)
+			{
+                fftw_complex leftMean = { leftSum[2 * k] / leftSize, leftSum[2 * k + 1] / leftSize };
+				fftw_complex rightMean = { rightSum[2 * k] / rightSize, rightSum[2 * k + 1] / rightSize };
+				distance += squaredDistance_cpx(leftMean, rightMean);
+			}
+			if (distance > threshold)
+			{
+				threshold = distance;
+				jumpPoint = j;
+			}
+            for (int k = 0; k < config.halfHarmonics; k++)
+            {
+                leftSum[2 * k] += (*(window + k + config.halfHarmonics * j))[0];
+                leftSum[2 * k + 1] += (*(window + k + config.halfHarmonics * j))[1];
+                rightSum[2 * k] -= (*(window + k + config.halfHarmonics * j))[0];
+                rightSum[2 * k + 1] -= (*(window + k + config.halfHarmonics * j))[1];
+            }
+			leftSize++;
+			rightSize--;
+		}
+        //calculate mean of the side containing the window center
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+			leftSum[2 * j] = 0.;
+			leftSum[2 * j + 1] = 0.;
+        }
+		float variance = 0.;
+        
+        if (jumpPoint >= kernelSize / 2)
+		{
+			for (int j = 0; j < config.halfHarmonics; j++)
+			{
+                leftSize = 0;
+				for (int k = 0; k < jumpPoint; k++)
+				{
+					if (sample.pitchMarkerValidity[index + k] == 0)
+					{
+						continue;
+					}
+					leftSum[2 * j] += (*(window + j + config.halfHarmonics * k))[0];
+					leftSum[2 * j + 1] += (*(window + j + config.halfHarmonics * k))[1];
+					leftSize++;
+				}
+				leftSum[2 * j] /= leftSize;
+                leftSum[2 * j + 1] /= leftSize;
+				for (int k = 0; k < jumpPoint; k++)
+				{
+					if (sample.pitchMarkerValidity[index + k] == 0)
+					{
+						continue;
+					}
+					variance += squaredDistance(*(window + j + config.halfHarmonics * k)[0], *(window + j + config.halfHarmonics * k)[1], leftSum[2 * j], leftSum[2 * j + 1]);
+				}
+			}
+			variance /= leftSize * config.halfHarmonics;
+		}
+		else
+		{
+			for (int j = j = 0; j < config.halfHarmonics; j++)
+			{
+				leftSize = 0;
+				for (int k = jumpPoint; k < kernelSize; k++)
+				{
+					if (sample.pitchMarkerValidity[index + k] == 0)
+					{
+						continue;
+					}
+					leftSum[2 * j] += (*(window + j + config.halfHarmonics * k))[0];
+					leftSum[2 * j + 1] += (*(window + j + config.halfHarmonics * k))[1];
+					leftSize++;
+				}
+				leftSum[2 * j] /= leftSize;
+				leftSum[2 * j + 1] /= leftSize;
+				for (int k = jumpPoint; k < kernelSize; k++)
+				{
+					if (sample.pitchMarkerValidity[index + k] == 0)
+					{
+						continue;
+					}
+					variance += squaredDistance(*(window + j + config.halfHarmonics * k)[0], *(window + j + config.halfHarmonics * k)[1], leftSum[2 * j], leftSum[2 * j + 1]);
+				}
+			}
+			variance /= leftSize * config.halfHarmonics;
+		}
+        for (int j = 0; j < config.halfHarmonics; j++)
+        {
+			fftw_complex mean = { leftSum[2 * j], leftSum[2 * j + 1] };
+            weightedDistance(*(window + j + config.halfHarmonics * kernelSize / 2), mean, variance, 1. - powf((float)j / (float)config.halfHarmonics, 2.), smoothedDftCoeffs + i * config.halfHarmonics + j);
+        }
 	}
-	for (int i = 0; i < effectiveLength * config.halfHarmonics; i++)
-	{
+    //copy smoothedDftCoeffs to dftCoeffs
+    for (int i = 0; i < effectiveLength * config.halfHarmonics; i++)
+    {
         (*(dftCoeffs + i))[0] = (*(smoothedDftCoeffs + i))[0];
         (*(dftCoeffs + i))[1] = (*(smoothedDftCoeffs + i))[1];
 	}
-	free(smoothedDftCoeffs);
-    free(medianDftCoeffs);
-    free(medianBuffer);
+    free(smoothedDftCoeffs);
+	free(leftSum);
+	free(rightSum);
 }
 
 //constructs a voiced signal from a set of fourier coefficients, and saves it in the sample object.
@@ -238,20 +377,33 @@ void constructVoicedSignal(fftw_complex* dftCoeffs, cSample sample, engineCfg co
             {
                 break;
             }
+			if (*(sample.pitchMarkerValidity + markerEnd) == 0)
+			{
+				markerEnd++;
+				continue;
+			}
             dynIntArray_append(&windowPoints, markerEnd);
             markerEnd++;
         }
         if (windowPoints.length == 0)
         {
             int previous = markerStart - 1;
-			if (previous < 0)
+            if (previous < 0)
+            {
+                previous = 0;
+            }
+			if (sample.pitchMarkerValidity[previous] == 0)
 			{
-				previous = 0;
+				previous--;
 			}
             int next = markerEnd;
 			if (next >= sample.config.markerLength - 1)
 			{
 				next = sample.config.markerLength - 2;
+			}
+			if (sample.pitchMarkerValidity[next] == 0)
+			{
+				next++;
 			}
             dynIntArray_append(&windowPoints, previous);
             dynIntArray_append(&windowPoints, next);
@@ -356,7 +508,7 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, 
         }
         nfft_trafo_1d(&inverseNUFFT);
 
-		float localPitch = *(sample.pitchMarkers + i + 1) - *(sample.pitchMarkers + i);
+		/*float localPitch = *(sample.pitchMarkers + i + 1) - *(sample.pitchMarkers + i);
         float referencePitch;
 		if (i == 0)
 		{
@@ -387,8 +539,12 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, 
 		else
 		{
 			pitchDivergence = (referencePitch - localPitch) / (localPitch + referencePitch);
-		}
+		}*/
         float multiplier = 1.;// - pitchDivergence;
+		if (sample.pitchMarkerValidity[i] == 0)
+		{
+			multiplier = 0.;
+		}
 		for (int j = 0; j < start_inner - start_outer; j++)
 		{
             *(unvoicedSignal + start_outer + j) += (*(sample.waveform + start_outer + j) - inverseNUFFT.f[j][0]) * j / (start_inner - start_outer - 1) * multiplier;
@@ -402,17 +558,6 @@ void constructUnvoicedSignal(float* evaluationPoints, fftw_complex * dftCoeffs, 
             *(unvoicedSignal + end_inner + j) += (*(sample.waveform + end_inner + j) - inverseNUFFT.f[end_inner - start_outer + j][0]) * (end_outer - end_inner - 1 - j) / (end_outer - end_inner - 1) * multiplier;
 		}
         nfft_finalize(&inverseNUFFT);
-    }
-    for (int i = 0; i < sample.config.markerLength - 1; i++)
-    {
-		if (*(sample.pitchMarkerValidity + i) == 0)
-		{
-			int sectionSize = *(sample.pitchMarkers + i + 1) - *(sample.pitchMarkers + i);
-			for (int j = 0; j < sectionSize; j++)
-			{
-				*(unvoicedSignal + *(sample.pitchMarkers + i) + j) = (*(unvoicedSignal + *(sample.pitchMarkers + i - 1) + j) + *(unvoicedSignal + *(sample.pitchMarkers + i + 2) - sectionSize + j)) / 2.;
-			}
-		}
     }
 }
 

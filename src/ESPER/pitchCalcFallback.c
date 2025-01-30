@@ -245,7 +245,7 @@ void checkMarkerValidity(cSample* sample, engineCfg config)
 		float invalidError = 0.;
 		for (int j = 0; j < sectionSize; j++)
 		{
-			float alternative = *(sample->waveform + *(sample->pitchMarkers + i - 1) + j) + (*(sample->waveform + *(sample->pitchMarkers + i + 2) - sectionSize + j));
+			float alternative = *(sample->waveform + *(sample->pitchMarkers + i - 1) + j) - (*(sample->waveform + *(sample->pitchMarkers + i + 2) - sectionSize + j));
 			invalidError += powf(alternative / 2., 2.);
 		}
 		if (invalidError < validError)
