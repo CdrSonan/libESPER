@@ -328,12 +328,28 @@ void LIBESPER_CDECL pitchCalcFallback(cSample* sample, engineCfg config) {
 	float* smoothedWave = createSmoothedWave(sample);
 	dynIntArray zeroTransitions = getZeroTransitions(smoothedWave, sample->config.length);
 	int markerCandidateLength = zeroTransitions.length;
+	if (markerCandidateLength == 0)
+	{
+		for (int i = 0; i < sample->config.batches; i++)
+		{
+			*(sample->pitchDeltas + i) = 100;
+		}
+		return;
+	}
 	MarkerCandidate* markerCandidates = createMarkerCandidates(zeroTransitions, batchSize, lowerLimit, sample->config.length);
 	buildPitchGraph(markerCandidates, markerCandidateLength, batchSize, lowerLimit, sample, smoothedWave, config);
 	fillPitchMarkers(zeroTransitions, markerCandidates, markerCandidateLength, sample);
 	dynIntArray_dealloc(&zeroTransitions);
 	free(markerCandidates);
 	free(smoothedWave);
+	if (sample->config.markerLength < 2)
+	{
+		for (int i = 0; i < sample->config.batches; i++)
+		{
+			*(sample->pitchDeltas + i) = 100;
+		}
+		return;
+	}
 	checkMarkerValidity(sample, config);
 	fillPitchDeltas(sample, config);
 	sample->config.pitch = median(sample->pitchDeltas, sample->config.pitchLength);

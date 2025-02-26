@@ -77,9 +77,9 @@ void smoothTempSpace(cSample sample, engineCfg config)
 //constructs a set of evaluation points, i.e. per-sample pitch-synchronous coordinates, for a sample object with existing pitch data.
 float* getEvaluationPoints(int start, int end, float* wave, cSample sample, engineCfg config)
 {
-    float* localMarkers = (float*)malloc((end - start) * sizeof(float));
-    float* markerSpace = (float*)malloc((end - start) * sizeof(float));
-    for (int j = 0; j < end - start; j++)
+    float* localMarkers = (float*)malloc((end - start + 1) * sizeof(float));
+    float* markerSpace = (float*)malloc((end - start + 1) * sizeof(float));
+    for (int j = 0; j <= end - start; j++)
     {
         *(localMarkers + j) = *(sample.pitchMarkers + start + j) - (int)ceil(*(sample.pitchMarkers + start));
         *(markerSpace + j) = j;
@@ -91,7 +91,7 @@ float* getEvaluationPoints(int start, int end, float* wave, cSample sample, engi
         *(windowSpace + j) = j;
     }
     //evaluation points contain pitch-synchronous coordinate for each waveform element in the offset window
-    float* evaluationPoints = extrap(localMarkers, markerSpace, windowSpace, end - start, windowLength);
+    float* evaluationPoints = extrap(localMarkers, markerSpace, windowSpace, end - start + 1, windowLength);
     free(localMarkers);
     free(markerSpace);
     free(windowSpace);
@@ -202,6 +202,10 @@ void separateVoicedUnvoicedPostProc(fftw_complex* dftCoeffs, cSample sample, eng
 {
     int effectiveLength = sample.config.markerLength - 1;
     int kernelSize = 10;
+    if (effectiveLength < kernelSize)
+    {
+        return;
+    }
     fftw_complex* smoothedDftCoeffs = (fftw_complex*)malloc(effectiveLength * config.halfHarmonics * sizeof(fftw_complex));
     float* leftSum = (float*)malloc(2 * config.halfHarmonics * sizeof(float));
     float* rightSum = (float*)malloc(2 * config.halfHarmonics * sizeof(float));
@@ -580,7 +584,7 @@ void applyUnvoicedSignal(float* unvoicedSignal, cSample sample, engineCfg config
 void separateVoicedUnvoiced(cSample sample, engineCfg config)
 {
     //separation calculations are only necessary if the sample is voiced
-    if (sample.config.isVoiced == 0)
+    if (sample.config.isVoiced == 0 || sample.config.markerLength < 2)
     {
         for (int i = 0; i < sample.config.batches; i++)
         {
