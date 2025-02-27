@@ -61,15 +61,9 @@ void LIBESPER_CDECL applyBreathiness(float* specharm, float* breathiness, int le
 void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch, float* formantShift, float* breathiness, int length, engineCfg config)
 {
 	float* tgtSpace = (float*)malloc(config.halfHarmonics * sizeof(float));
-	float* spectrumSpace = (float*)malloc((config.halfTripleBatchSize + 1) * sizeof(float));
-	for (int i = 0; i < config.halfTripleBatchSize + 1; i++)
-	{
-		*(spectrumSpace + i) = i;
-	}
 	float* srcSpace = (float*)malloc(sizeof(float));
 	float* srcVals = (float*)malloc(sizeof(float));
 	int maxSrcSize = 1;
-	float* shiftedSpectrumSpace = (float*)malloc((config.halfTripleBatchSize + 1) * sizeof(float));
 	for (int i = 0; i < length; i++)
 	{
 		float effSrcPitch = (float)config.tripleBatchSize / *(srcPitch + i);
@@ -79,7 +73,7 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 		int reprSwitch = config.halfHarmonics * effSrcPitch;
 		if (reprSwitch > config.halfTripleBatchSize)
 		{
-			reprSwitch = config.halfTripleBatchSize;
+			reprSwitch = config.halfTripleBatchSize + 1;
 		}
 		int srcSize = config.halfHarmonics + config.halfTripleBatchSize + 1 - reprSwitch;
 		if (srcSize < (int)config.halfHarmonics)
@@ -95,12 +89,12 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 		for (int j = 0; j < config.halfHarmonics; j++)
 		{
 			*(srcSpace + j) = j * effSrcPitch;
-			if (*(srcSpace + j) >= config.halfTripleBatchSize + 1)
+			if (*(srcSpace + j) > config.halfTripleBatchSize)
 			{
-				*(srcSpace + j) = config.halfTripleBatchSize;
+				*(srcSpace + j) = config.halfTripleBatchSize + (j + 1.) / (config.halfHarmonics + 1);
 			}
 			*(tgtSpace + j) = j * effTgtPitch;
-			if (*(tgtSpace + j) >= config.halfTripleBatchSize + 1)
+			if (*(tgtSpace + j) > config.halfTripleBatchSize)
 			{
 				*(tgtSpace + j) = config.halfTripleBatchSize;
 			}
@@ -109,8 +103,8 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 		}
 		for (int j = 0; j < config.halfTripleBatchSize + 1 - reprSwitch; j++)
 		{
-			*(srcSpace + config.halfHarmonics + j) = j + reprSwitch;
-			*(srcVals + config.halfHarmonics + j) = *(specharm + i * config.frameSize + config.nHarmonics + 2 + j + reprSwitch);
+			*(srcSpace + config.halfHarmonics + j) = reprSwitch + j;
+			*(srcVals + config.halfHarmonics + j) = *(specharm + i * config.frameSize + config.nHarmonics + 2 + reprSwitch + j);
 		}
 		float* tgtVals = interp(srcSpace, srcVals, tgtSpace, srcSize, config.halfHarmonics);
 		for (int j = 0; j < config.halfHarmonics; j++)
@@ -119,57 +113,14 @@ void LIBESPER_CDECL pitchShift(float* specharm, float* srcPitch, float* tgtPitch
 			tgtAmplitude += *(tgtVals + j);
 		}
 		free(tgtVals);
-		/*for (int j = 0; j < config.halfHarmonics; j++)
+		for (int j = 0; j < config.halfHarmonics; j++)
 		{
 			*(specharm + i * config.frameSize + j) *= sqrtf(srcAmplitude / tgtAmplitude);
 		}
-		float modEffTgtPitch;
-		if (*(breathiness + i) > 0.)
-		{
-			modEffTgtPitch = *(breathiness + i) * effTgtPitch + (1. - *(breathiness + i)) * effSrcPitch;
-			modEffTgtPitch += (effTgtPitch - modEffTgtPitch) * *(formantShift + i);
-		}
-		else
-		{
-			modEffTgtPitch = effSrcPitch + (effTgtPitch - effSrcPitch) * *(formantShift + i);
-		}
-		srcAmplitude = 1.;
-		tgtAmplitude = 1.;
-		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
-		{
-			*(shiftedSpectrumSpace + j) = j * effSrcPitch / modEffTgtPitch;
-			if (*(shiftedSpectrumSpace + j) >= config.halfTripleBatchSize + 1)
-			{
-				*(shiftedSpectrumSpace + j) = config.halfTripleBatchSize;
-			}
-			srcAmplitude += *(specharm + i * config.frameSize + config.nHarmonics + 2 + j);
-		}
-		float* multipliers = interp(
-			spectrumSpace,
-			specharm + i * config.frameSize + config.nHarmonics + 2,
-			shiftedSpectrumSpace,
-			config.halfTripleBatchSize + 1,
-			config.halfTripleBatchSize + 1
-		);
-		for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
-		{
-			*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) = *(multipliers + j);
-			tgtAmplitude += *(specharm + i * config.frameSize + config.nHarmonics + 2 + j);
-		}
-		free(multipliers);
-		if (srcAmplitude < tgtAmplitude && tgtAmplitude > 0.)
-		{
-			for (int j = 0; j < config.halfTripleBatchSize + 1; j++)
-			{
-				*(specharm + i * config.frameSize + config.nHarmonics + 2 + j) *= sqrtf(srcAmplitude / tgtAmplitude);
-			}
-		}*/
 	}
 	free(srcSpace);
 	free(srcVals);
 	free(tgtSpace);
-	free(spectrumSpace);
-	free(shiftedSpectrumSpace);
 }
 
 
