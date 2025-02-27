@@ -344,32 +344,39 @@ void phaseInterp_inplace(float* phasesA, float* phasesB, int len, float factor)
     float b;
     for (int i = 0; i < len; i++)
     {
-        //calculate both possible angles
         a = *(phasesB + i) - *(phasesA + i);
-        if (*(phasesB + i) > *(phasesA + i))
+        b = *(phasesA + i) - *(phasesB + i);
+        if (a < -pi)
         {
-            b = a - (2 * pi);
+            a += 2 * pi;
         }
-        else
+        else if (a > pi)
         {
-            b = a + (2 * pi);
+            a -= 2 * pi;
         }
-        //apply transition using smaller angle
+        if (b < -pi)
+        {
+            b += 2 * pi;
+        }
+        else if (b > pi)
+        {
+            b -= 2 * pi;
+        }
         if (fabsf(a) <= fabsf(b))
         {
-            *(phasesA + i) = fmodf(*(phasesA + i) + a * factor, 2 * pi);
+            *(phasesA + i) += a * factor;
         }
         else
         {
-            *(phasesA + i) = fmodf(*(phasesA + i) + b * factor, 2 * pi);
+            *(phasesA + i) += b * factor;
         }
-        if (*(phasesA + i) > pi)
-        {
-            *(phasesA + i) -= 2 * pi;
-        }
-        else if (*(phasesA + i) <= -pi)
+        if (*(phasesA + i) < -pi)
         {
             *(phasesA + i) += 2 * pi;
+        }
+        else if (*(phasesA + i) > pi)
+        {
+            *(phasesA + i) -= 2 * pi;
         }
     }
 }

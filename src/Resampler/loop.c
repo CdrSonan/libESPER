@@ -44,10 +44,10 @@ void loopSamplerVoiced(float* input, int length, float* output, int targetLength
         {
             for (int j = 0; j < config.halfHarmonics; j++)
             {
-                *(buffer + i * (config.nHarmonics + 2) + j) *= (float)(i + 1) / (float)(effSpacing + 1);// powf((float)(i + 1) / (float)(effSpacing + 1), 4.);
-                *(buffer + i * (config.nHarmonics + 2) + j) += *(input + (length - effSpacing + i) * config.frameSize + j) * (1. - (float)(i + 1) / (float)(effSpacing + 1));// powf(1. - ((float)(i + 1) / (float)(effSpacing + 1)), 4.);
+                *(buffer + i * (config.nHarmonics + 2) + j) *= (float)(i + 1) / (float)(effSpacing + 1);
+                *(buffer + i * (config.nHarmonics + 2) + j) += *(input + (length - effSpacing + i) * config.frameSize + j) * (1. - (float)(i + 1) / (float)(effSpacing + 1));
             }
-            phaseInterp_inplace(buffer + i * (config.nHarmonics + 2) + config.halfHarmonics, input + (length - effSpacing + i) * config.frameSize + config.halfHarmonics, config.halfHarmonics, (float)(i + 1) / (float)(effSpacing + 1));
+            phaseInterp_inplace(buffer + i * (config.nHarmonics + 2) + config.halfHarmonics, input + (length - effSpacing + i) * config.frameSize + config.halfHarmonics, config.halfHarmonics, 1. - (float)(i + 1) / (float)(effSpacing + 1));
         }
         //add mid windows from buffer to output
         #pragma omp parallel for
